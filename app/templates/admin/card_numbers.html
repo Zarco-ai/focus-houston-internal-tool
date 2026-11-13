@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% block title %}Card numbers{% endblock %}
+
+{% block content %}
+
+<h1>Card numbers</h1>
+<p class="subtle">
+  The numbers mothers are given, printed by <code>generate_cards.py</code>. Her
+  name goes on the paper sheet, which stays locked in the office; the app only
+  ever sees the number. Load each batch's <code>cards-batch-N.csv</code> here
+  once. Loading the same file again changes nothing, and a batch can't be
+  changed once loaded.
+</p>
+
+<div class="stat-grid">
+  <div class="stat"><div class="stat-label">Loaded</div><div class="stat-value">{{ status.loaded }}</div></div>
+  <div class="stat"><div class="stat-label">Given out</div><div class="stat-value">{{ status.assigned }}</div></div>
+  <div class="stat"><div class="stat-label">Unused</div><div class="stat-value">{{ status.unused }}</div></div>
+  <div class="stat"><div class="stat-label">Batches</div><div class="stat-value">{{ status.batches|join(', ') if status.batches else '—' }}</div></div>
+</div>
+
+<form method="post" enctype="multipart/form-data" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field">
+    <span>Card list (cards-batch-N.csv)</span>
+    <input type="file" name="card_list" accept=".csv,text/csv" required>
+    <small class="field-help">The CSV, not the printable HTML sheet. Every number is checked before anything is loaded.</small>
+  </label>
+  <button type="submit" class="btn btn-primary">Load</button>
+</form>
+
+<p><a href="{{ url_for('admin.settings') }}">Back to Settings</a></p>
+
+{% endblock %}

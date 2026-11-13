@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Annual figures {{ year }}{% endblock %}
+
+{% block content %}
+
+<h1>Annual figures</h1>
+<p class="subtle">
+  The ANNUAL METRICS rows. Nothing in the app counts these, so they are typed
+  here once a year. They show on the Totals page when you pick a whole year.
+  Leave a box blank if you don't have the number yet.
+</p>
+
+<form method="get" class="card">
+  <div class="field-row field-row-end">
+    <label class="field" style="flex:1">
+      <span>Year</span>
+      <input type="number" name="year" min="2000" max="2100" step="1" value="{{ year }}">
+    </label>
+    <button type="submit" class="btn btn-quiet">Show</button>
+  </div>
+</form>
+
+<form method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="year" value="{{ year }}">
+  <h2 style="margin-top:0">{{ year }}</h2>
+  {% for metric in annual_metrics %}
+    {% set row = entered.get(metric.key) %}
+    <label class="field">
+      <span>{{ metric.label }}</span>
+      <input type="text" inputmode="numeric" name="{{ metric.key }}" maxlength="9"
+             value="{{ row.value if row else '' }}">
+      {% if row %}
+        <small class="field-help">Last changed by {{ row.entered_by.email }}</small>
+      {% endif %}
+    </label>
+  {% endfor %}
+  <button type="submit" class="btn btn-primary">Save {{ year }}</button>
+</form>
+
+<p><a href="{{ url_for('admin.settings') }}">Back to Settings</a></p>
+
+{% endblock %}

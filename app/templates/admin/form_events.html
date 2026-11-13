@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block title %}Form event names{% endblock %}
+
+{% block content %}
+
+<h1>Form event names</h1>
+<p class="subtle">
+  The answers to “What event are you here for?”, and which service type each
+  one is. Match each answer once; every visit from it, past ones included,
+  follows. A visit counts whether or not its event is matched. If you change an
+  answer's wording in the Google Form, the new wording shows up here to match.
+</p>
+
+<div class="table-scroll">
+  <table>
+    <thead><tr><th>Answer on the form</th><th class="num">Responses</th><th>Service type</th></tr></thead>
+    <tbody>
+      {% for event in labels %}
+        <tr>
+          <td>{{ event.label }}{% if not event.mapping %} <span class="tag tag-confirm">not matched</span>{% endif %}</td>
+          <td class="num">{{ event.responses }}</td>
+          <td>
+            <form method="post" class="inline-form">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="label" value="{{ event.label }}">
+              <select name="service_type_id" aria-label="Service type for {{ event.label }}">
+                <option value="">— not matched —</option>
+                {% for service_type in service_types %}
+                  <option value="{{ service_type.id }}"
+                          {% if event.mapping and event.mapping.service_type_id == service_type.id %}selected{% endif %}>
+                    {{ service_type.name }}</option>
+                {% endfor %}
+              </select>
+              <button class="btn btn-quiet">Save</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="3" class="subtle">No responses yet, so no event names to match.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<p><a href="{{ url_for('responses.page') }}">Back to Responses</a></p>
+
+{% endblock %}

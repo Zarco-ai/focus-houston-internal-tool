@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}You can't open this page · FOCUS Houston{% endblock %}
+
+{% block content %}
+<div class="sign-in">
+  <h1>You can't open this page</h1>
+  <p>This page is for admins. If you need it, ask a FOCUS admin.</p>
+  <a class="btn btn-quiet btn-block" href="{{ url_for('home.index') }}">Go to the home screen</a>
+</div>
+{% endblock %}

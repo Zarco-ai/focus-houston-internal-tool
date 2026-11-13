@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+{% block title %}Delete a day's test data{% endblock %}
+
+{% block content %}
+<h1>Delete a day's test data</h1>
+<p class="subtle">
+  For test entries only. Deletes every batch dated one day, approved or not, and
+  discards that day's Google Form responses (their visits go with them). Nothing
+  on any other date is touched. It can't be undone from the app: download every
+  session first (Settings → Import earlier sheets).
+</p>
+
+<form method="get" class="card inline-form">
+  <label class="field">
+    <span>Date</span>
+    <input type="date" name="date" value="{{ day.isoformat() if day else '' }}" required>
+  </label>
+  <button type="submit" class="btn">Show what's dated that day</button>
+</form>
+
+{% if day %}
+  <h2>Batches dated {{ day.strftime('%B %-d, %Y') }}: {{ batches|length }}</h2>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>#</th><th>Status</th><th>Service type</th><th class="num">Lines</th><th class="num">Value</th></tr></thead>
+      <tbody>
+        {% for batch in batches %}
+          <tr>
+            <td>{{ batch.id }}</td>
+            <td>{{ batch.status }}</td>
+            <td>{{ batch.service_type.name if batch.service_type else '—' }}</td>
+            <td class="num">{{ batch.lines|length }}</td>
+            <td class="num">{{ batch.total_value|money }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="subtle">None.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <h2>Form responses dated {{ day.strftime('%B %-d, %Y') }}: {{ responses|length }}</h2>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>#</th><th>Submitted</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for response in responses %}
+          <tr>
+            <td>{{ response.id }}</td>
+            <td>{{ response.submitted_local_date.isoformat() }}</td>
+            <td>{{ response.decision or 'waiting' }}</td>
+          </tr>
+        {% else %}
+          <tr><td colspan="3" class="subtle">None.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% if batches or responses %}
+    <form method="post" class="card">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <input type="hidden" name="date" value="{{ day.isoformat() }}">
+      <input type="hidden" name="batch_count" value="{{ batches|length }}">
+      <input type="hidden" name="response_count" value="{{ responses|length }}">
+      <label class="field">
+        <span>Type {{ day.isoformat() }} to confirm</span>
+        <input type="text" name="confirm" autocomplete="off" required>
+      </label>
+      <button type="submit" class="btn btn-danger">Delete these {{ batches|length }} batches and discard these {{ responses|length }} responses</button>
+    </form>
+  {% endif %}
+{% endif %}
+
+<p><a href="{{ url_for('admin.settings') }}">Back to Settings</a></p>
+{% endblock %}

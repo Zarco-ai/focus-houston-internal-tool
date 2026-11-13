@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Monthly report — {{ report.start.strftime('%B %Y') }}{% endblock %}
+{% block main_class %}page page-wide{% endblock %}
+
+{% block content %}
+<div class="print-only print-heading"><strong>{{ report.title }}</strong></div>
+<h1>Monthly report <span class="heading-period">{{ report.start.strftime('%B %Y') }}</span></h1>
+<p class="subtle no-print">
+  the program director's monthly sheet, from approved batches: one row per batch, the goods
+  under it by group, then the totals. Every number is worked out; none is typed.
+</p>
+
+<div class="card no-print">
+  <div class="card-actions">
+    <button type="button" class="btn btn-quiet" data-print>Print</button>
+    <a class="btn btn-quiet" href="{{ url_for('totals.index', month=report.start.strftime('%Y-%m')) }}">Back to Totals</a>
+    {% with kind='monthly', year=report.year, month=report.month %}{% include "reports/_file_button.html" %}{% endwith %}
+  </div>
+  {% include "reports/_filed_status.html" %}
+</div>
+
+{% if report.rate_text %}<p class="subtle"><em>Rates (today's catalog): {{ report.rate_text }}</em></p>{% endif %}
+
+<div class="table-scroll">
+  <table class="report-sheet">
+    <thead>
+      <tr>
+        {% for column in report.columns %}
+          <th class="{{ 'band-' ~ column.group|lower if column.group }} {{ 'num' if column.group }}">{{ report.labels.get(column.key, column.key) }}</th>
+        {% endfor %}
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in report.rows %}
+        <tr class="sheet-{{ row.kind }}">
+          {% for column in report.columns %}
+            {% set value = row.cells.get(column.key) %}
+            {% if column.key == 'date' %}<td>{{ value.strftime('%-m/%-d') if value else '' }}</td>
+            {% elif column.key in ('service', 'description') %}<td>{{ value or '' }}</td>
+            {% else %}<td class="num">{{ as_text(value, column.unit) if value is not none else '' }}</td>{% endif %}
+          {% endfor %}
+        </tr>
+      {% else %}
+        <tr><td colspan="{{ report.columns|length }}" class="subtle">No approved batches this month.</td></tr>
+      {% endfor %}
+      <tr class="total-row">
+        {% for column in report.columns %}
+          {% if loop.first %}<td>Totals</td>
+          {% elif column.key in ('service', 'description') %}<td></td>
+          {% else %}<td class="num">{{ as_text(report.totals.get(column.key, 0), column.unit) }}</td>{% endif %}
+        {% endfor %}
+      </tr>
+    </tbody>
+  </table>
+</div>
+<p class="subtle">
+  # of Unique Clients Served (different mothers, by card number): <strong>{{ report.unique_clients }}</strong>.
+  The UNIQUE columns above are sums of per-event counts.
+</p>
+
+<h2>Notes</h2>
+{% for note in report.notes %}<p class="flash flash-warn" style="margin:4px 0">{{ note }}</p>{% else %}
+  <p class="subtle">Nothing waiting: every line has a value and a catalog item.</p>{% endfor %}
+{% endblock %}

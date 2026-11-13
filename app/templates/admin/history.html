@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Import earlier sheets{% endblock %}
+
+{% block content %}
+<h1>Import earlier sheets</h1>
+<p class="subtle">
+  Loads months from the tracking spreadsheet into the app, exactly as they were
+  recorded, so every report has them. Each row's count and dollars come in as the
+  sheet had them; the app decides which report row they feed. Anything with no
+  value or no category waits in the review queue for you to finish.
+</p>
+<p class="subtle">
+  Everything goes in at once, or nothing does. The same file twice changes nothing.
+  Card numbers aren't in the sheets, so retention and the other Program Health
+  numbers start from the app's own intakes and form check-ins.
+</p>
+<form method="post" enctype="multipart/form-data" class="card"
+      data-confirm="Import every session in this file? It can't be undone from the app.">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <label class="field">
+    <span>History file (focus-history-….json)</span>
+    <input type="file" name="history_file" accept=".json,application/json" required>
+  </label>
+  <button type="submit" class="btn btn-primary">Import</button>
+</form>
+<h2>Save every session</h2>
+<p class="subtle">
+  Downloads every approved session exactly as it is now: every count, price and
+  category you've set, and which lines are still in the review queue. Keep it
+  somewhere safe. It's also how the sessions move to another copy of the app:
+  import it here, in a copy that doesn't have those months yet. It contains your
+  session notes, so keep it out of email and chat.
+</p>
+<p><a class="btn" href="{{ url_for('admin.history_export') }}">Download every session (.json)</a></p>
+<p><a href="{{ url_for('admin.settings') }}">Back to Settings</a></p>
+{% endblock %}

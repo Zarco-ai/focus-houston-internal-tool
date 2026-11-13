@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% block title %}Report metrics{% endblock %}
+
+{% block content %}
+
+<h1>Report metrics</h1>
+<p class="subtle">
+  Every row the Totals page can show, in the order of the FOCUS North America
+  template. Switch a row off and it leaves the Totals page; if it is typed on
+  the review screen, its box leaves the review screen too. Anything already
+  typed is kept, and comes back if the row is switched on again.
+</p>
+<p class="subtle">
+  You can change any row's wording to match a new funder template. Leave a box
+  empty to go back to the standard wording. How each number is worked out
+  can't be changed here — that is in the app's code, and written down in its
+  documentation.
+</p>
+
+<form method="post">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+  {% for group, rows in groups %}
+    <h2 class="band band-{{ group.key|lower }}">{{ group.label }}</h2>
+    {% if group.note %}<p class="subtle">{{ group.note }}</p>{% endif %}
+    <div class="card">
+      {% for setting in rows %}
+        <div class="metric-setting">
+          <label class="metric-switch">
+            <input type="checkbox" name="enabled-{{ setting.key }}"
+                   {% if setting.enabled %}checked{% endif %}>
+            <span>Show</span>
+          </label>
+          <label class="field metric-label">
+            <span class="sr-only">Wording for {{ setting.metric.label }}</span>
+            <input type="text" name="label-{{ setting.key }}" maxlength="200"
+                   value="{{ setting.label }}">
+            <small class="field-help">
+              {{ setting.metric.source }}{% if setting.metric.definition %} — {{ setting.metric.definition }}{% endif %}
+              {% if setting.label_changed %}<br>Standard wording: “{{ setting.metric.label }}”{% endif %}
+            </small>
+          </label>
+        </div>
+      {% endfor %}
+    </div>
+  {% endfor %}
+
+  <p><button type="submit" class="btn btn-primary btn-big">Save</button></p>
+</form>
+
+<p><a href="{{ url_for('admin.settings') }}">Back to Settings</a></p>
+
+{% endblock %}

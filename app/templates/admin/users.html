@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% block title %}Users & Access{% endblock %}
+
+{% block content %}
+
+<h1>Users &amp; Access</h1>
+<p class="subtle">
+  Who can sign in, and what they can do. People sign in with their own Google
+  account — FOCUS never sees a password. Removing someone takes effect on their
+  very next click.
+</p>
+
+<form method="post" action="{{ url_for('users.add') }}" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <h2 style="margin-top:0">Add someone</h2>
+  <div class="field-row">
+    <label class="field" style="flex:2">
+      <span>Google email address</span>
+      <input type="email" name="email" required maxlength="254" autocomplete="off"
+             placeholder="name@focusna.org or name@gmail.com">
+    </label>
+    <label class="field" style="flex:1">
+      <span>Role</span>
+      <select name="role">
+        <option value="staff">Staff</option>
+        <option value="admin">Admin</option>
+      </select>
+    </label>
+  </div>
+  <small class="field-help">
+    Staff count items, run intakes, review, and see reports. Admins can also
+    manage the catalog, settings and this list.
+  </small>
+  <button type="submit" class="btn btn-primary" style="margin-top:12px">Add</button>
+</form>
+
+<div class="table-scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Email</th>
+        <th>Role</th>
+        <th>Last signed in</th>
+        <th>Added by</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for person in people %}
+        <tr{% if not person.active %} class="row-inactive"{% endif %}>
+          <td>
+            {{ person.email }}
+            {% if person.id == current_user.id %}<span class="tag tag-confirm">you</span>{% endif %}
+            {% if not person.active %}<span class="tag">removed</span>{% endif %}
+          </td>
+          <td>
+            {% if person.active %}
+              <form method="post" action="{{ url_for('users.change_role', user_id=person.id) }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <select name="role" data-autosubmit aria-label="Role for {{ person.email }}">
+                  {% for role in roles %}
+                    <option value="{{ role }}" {% if person.role == role %}selected{% endif %}>{{ role|capitalize }}</option>
+                  {% endfor %}
+                </select>
+              </form>
+            {% else %}
+              {{ person.role_label }}
+            {% endif %}
+          </td>
+          <td>{{ person.last_login_at|local_datetime if person.last_login_at else 'never' }}</td>
+          <td>{{ person.added_by.email if person.added_by else 'first admin' }}</td>
+          <td>
+            {% if person.active %}
+              <form method="post" action="{{ url_for('users.remove', user_id=person.id) }}" class="remove-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <label class="subtle"><input type="checkbox" name="confirm" value="yes" required> sure</label>
+                <button type="submit" class="btn btn-danger">Remove</button>
+              </form>
+            {% else %}
+              <form method="post" action="{{ url_for('users.add') }}">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="email" value="{{ person.email }}">
+                <input type="hidden" name="role" value="{{ person.role }}">
+                <button type="submit" class="btn btn-quiet">Restore</button>
+              </form>
+            {% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<h2>Recent changes to this list</h2>
+{% if history %}
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>When</th><th>Who</th><th>What</th></tr></thead>
+      <tbody>
+        {% for entry in history %}
+          <tr>
+            <td>{{ entry.changed_at|local_datetime }}</td>
+            <td>{{ entry.user.email if entry.user else 'the app' }}</td>
+            <td>
+              {{ entry.description or entry.field }}
+              {% if entry.old_value or entry.new_value %}
+                <span class="subtle">({{ entry.old_value or '—' }} → {{ entry.new_value or '—' }})</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <p class="subtle">Nothing yet.</p>
+{% endif %}
+
+{% endblock %}

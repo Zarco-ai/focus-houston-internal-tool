@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Too many tries · FOCUS Houston{% endblock %}
+
+{% block content %}
+<div class="sign-in">
+  <h1>Too many tries</h1>
+  <p>Please wait a minute and try again.</p>
+  <a class="btn btn-quiet btn-block" href="{{ url_for('home.index') }}">Go to the home screen</a>
+</div>
+{% endblock %}

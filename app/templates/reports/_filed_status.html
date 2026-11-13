@@ -1,0 +1,10 @@
+{# The filed copies of this report, and whether the live numbers still match. #}
+{% for comparison in filed %}
+  {% set s = comparison.snapshot %}
+  <p class="flash {{ 'flash-warn' if comparison.changed else 'flash-success' }}" style="margin:6px 0">
+    Filed {{ s.filed_at|local_datetime }} by {{ s.filed_by.email }}:
+    {% if comparison.changed %}<strong>changed since filed</strong> ({{ comparison.differences|length }} difference{{ 's' if comparison.differences|length != 1 }}).
+    {% else %}the live numbers still match.{% endif %}
+    <a href="{{ url_for('reports.filed_one', snapshot_id=s.id) }}">See the filed copy</a>
+  </p>
+{% endfor %}

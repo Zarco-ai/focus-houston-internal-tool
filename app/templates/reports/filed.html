@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Filed reports{% endblock %}
+
+{% block content %}
+<h1>Filed reports</h1>
+<p class="subtle">
+  Each one is exactly what was sent, frozen when it was filed. The live reports
+  follow corrections; these never change. "Changed since filed" means a batch
+  was corrected after the report was sent.
+</p>
+<div class="table-scroll">
+  <table>
+    <thead><tr><th>Report</th><th>Filed</th><th>By</th><th>Now</th><th></th></tr></thead>
+    <tbody>
+      {% for comparison in comparisons %}
+        {% set s = comparison.snapshot %}
+        <tr>
+          <td>{{ s.period_start.strftime('%B %Y') if s.kind == 'monthly' else s.period_start.year }} ({{ s.kind }})</td>
+          <td>{{ s.filed_at|local_datetime }}</td>
+          <td>{{ s.filed_by.email }}</td>
+          <td>{% if comparison.changed %}<span class="tag tag-confirm">changed since filed</span>{% else %}matches{% endif %}</td>
+          <td><a href="{{ url_for('reports.filed_one', snapshot_id=s.id) }}">Open</a></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="subtle">Nothing filed yet. An admin files a report from its page.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

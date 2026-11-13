@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% set s = comparison.snapshot %}
+{% block title %}Filed report{% endblock %}
+
+{% block content %}
+<h1>Filed report <span class="heading-period">{{ s.period_start.strftime('%B %Y') if s.kind == 'monthly' else s.period_start.year }}</span></h1>
+<p class="subtle">
+  Filed {{ s.filed_at|local_datetime }} by {{ s.filed_by.email }} · app version {{ s.app_version }} ·
+  fingerprint <code>{{ s.payload_sha256[:12] }}</code>
+</p>
+
+{% if comparison.changed %}
+  <div class="card card-warn">
+    <strong>Changed since filed on {{ s.filed_at|local_datetime }}.</strong> A batch, a visit or a
+    price was corrected afterwards. The filed numbers below are what was sent; the live report has the
+    corrected ones.
+    <table style="margin-top:8px">
+      <thead><tr><th>Row</th><th class="num">As filed</th><th class="num">Now</th></tr></thead>
+      <tbody>
+        {% for label, before, after in comparison.differences %}
+          <tr><td>{{ label }}</td><td class="num">{{ before }}</td><td class="num">{{ after }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% else %}
+  <p class="flash flash-success">The live numbers still match what was filed.</p>
+{% endif %}
+
+<h2>As filed</h2>
+<div class="table-scroll">
+  <table>
+    <tbody>
+      {% for key, value in s.payload['values']|dictsort %}
+        {% set base = key.split('@')[0] %}
+        <tr><td>{{ s.payload['labels'].get(base, base) }}{% if '@' in key %} ({{ key.split('@')[1] }}){% endif %}</td><td class="num">{{ value }}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+<p><a href="{{ url_for('reports.filed_list') }}">All filed reports</a></p>
+{% endblock %}

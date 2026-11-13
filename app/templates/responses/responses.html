@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+{% block title %}Responses{% endblock %}
+
+{% block content %}
+
+<h1>Responses</h1>
+<p class="subtle">
+  What mothers send through the Google Form. A response with a card number
+  the app knows is recorded as a visit by itself. Anything else waits below
+  for a person — the app never creates a mother from the form on its own.
+</p>
+
+{# --- The sync ----------------------------------------------------------- #}
+
+<div class="card">
+  {% if not configured %}
+    <p style="margin:0"><strong>The Google Form sync isn't set up yet.</strong>
+      {% if setup_error %}{{ setup_error }}{% endif %}
+      FOCUS's Google Workspace admin follows <code>docs/GOOGLE_FORM_SETUP.md</code>,
+      then the Sheet ID and key are added to the app's settings on Render.</p>
+  {% else %}
+    <div class="card-row">
+      <div>
+        {% if last_success %}
+          <strong>Last synced {{ last_success.finished_at|local_datetime }}</strong>
+        {% else %}<strong>Not synced yet</strong>{% endif %}
+        <div class="subtle">Syncs when this page opens if it's been more than a few minutes.</div>
+      </div>
+      <form method="post" action="{{ url_for('responses.sync_now') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-primary">Sync now</button>
+      </form>
+    </div>
+    {% if last_run and last_run.rows_remaining %}
+      <p class="flash flash-warn" style="margin:10px 0 0">{{ last_run.rows_remaining }} more response{{ 's' if last_run.rows_remaining != 1 }} waiting to come in. They arrive a few hundred at a time; refresh this page or press Sync now.</p>
+    {% endif %}
+    {% if last_run and last_run.error %}
+      <p class="flash flash-error" style="margin:10px 0 0">Last sync ({{ last_run.started_at|local_datetime }}): {{ last_run.error }}</p>
+    {% endif %}
+    {% if last_run and last_run.columns_note %}
+      <p class="subtle" style="margin:8px 0 0">Sheet columns — {{ last_run.columns_note }}</p>
+    {% endif %}
+    {% if current_user.is_admin and service_account %}
+      <p class="subtle" style="margin:8px 0 0">The Sheet is shared, view only, with <code>{{ service_account }}</code>.</p>
+    {% endif %}
+  {% endif %}
+</div>
+
+{% if unmapped %}
+  <div class="card card-warn">
+    {{ unmapped }} event name{{ 's' if unmapped != 1 }} from the form {{ 'aren’t' if unmapped != 1 else 'isn’t' }} matched to a service type yet.
+    The visits still count.
+    {% if current_user.is_admin %}<a href="{{ url_for('admin.form_events') }}">Match them</a>.{% else %}An admin matches them once.{% endif %}
+  </div>
+{% endif %}
+
+{# --- The queue ---------------------------------------------------------- #}
+
+<h2 id="review">To review{% if queue %} ({{ queue|length }}){% endif %}</h2>
+{% for item in queue %}
+  {% set r = item.response %}
+  <div class="card {{ 'card-warn' if item.is_waiting }}">
+    <div class="card-row">
+      <strong>Card “{{ r.raw_id_text or '(blank)' }}”</strong>
+      <span class="subtle">{{ r.submitted_at|local_datetime }}{% if r.raw_event_label %} · {{ r.raw_event_label }}{% endif %}
+        · returning: {{ 'yes' if r.returning else ('no' if r.returning is sameas false else '—') }}</span>
+    </div>
+    <ul class="review-reasons">
+      {% for kind in item.kinds %}<li>{{ kind_text[kind] }}</li>{% endfor %}
+      {% if item.says_returning_but_unknown %}<li>She said she's a returning mother, so she's probably in the app under another number.</li>{% endif %}
+      {% if r.decision == 'auto' %}<li>Recorded on card {{ r.participant.code }}.</li>{% endif %}
+    </ul>
+    {% if r.reason %}<p class="subtle review-quote">“{{ r.reason }}”</p>{% endif %}
+
+    <div class="card-actions">
+      {% if item.is_waiting %}
+        <form method="post" action="{{ url_for('responses.match', response_id=r.id) }}" class="inline-form">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <input type="text" name="card_number" inputmode="numeric" maxlength="12" required
+                 placeholder="Her card number" aria-label="Her card number">
+          <button class="btn btn-quiet">Match</button>
+        </form>
+        {% if item.can_create %}
+          <form method="post" action="{{ url_for('responses.create', response_id=r.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-quiet">Create her on {{ r.raw_id_text }}</button>
+          </form>
+        {% endif %}
+      {% else %}
+        <form method="post" action="{{ url_for('responses.checked', response_id=r.id) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button class="btn btn-quiet">Checked — the visit stands</button>
+        </form>
+      {% endif %}
+      <form method="post" action="{{ url_for('responses.discard', response_id=r.id) }}"
+            data-confirm="Discard this response{{ ' and remove its visit' if r.decision == 'auto' }}?">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-danger">Discard</button>
+      </form>
+    </div>
+  </div>
+{% else %}
+  <p class="subtle">Nothing to review.</p>
+{% endfor %}
+
+{# --- Recent ------------------------------------------------------------- #}
+
+<h2>Recent responses</h2>
+<div class="table-scroll">
+  <table>
+    <thead><tr><th>When</th><th>Card</th><th>Returning</th><th>Event</th><th class="num">Score</th><th>Status</th></tr></thead>
+    <tbody>
+      {% for r in recent %}
+        <tr{% if r.decision == 'discarded' %} class="row-inactive"{% endif %}>
+          <td>{{ r.submitted_at|local_datetime }}</td>
+          <td>{{ r.raw_id_text or '—' }}</td>
+          <td>{{ 'yes' if r.returning else ('no' if r.returning is sameas false else '—') }}</td>
+          <td>{{ r.raw_event_label or '—' }}</td>
+          <td class="num">{{ r.score or '—' }}</td>
+          <td>{{ {'auto': 'visit recorded', 'matched': 'matched', 'created': 'created', 'discarded': 'discarded'}.get(r.decision, 'waiting') }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="6" class="subtle">No responses yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if runs %}
+  <h2>Sync history</h2>
+  <div class="table-scroll">
+    <table>
+      <thead><tr><th>Started</th><th class="num">Rows</th><th class="num">New</th><th class="num">To review</th><th>Result</th></tr></thead>
+      <tbody>
+        {% for run in runs %}
+          <tr>
+            <td>{{ run.started_at|local_datetime }}</td>
+            <td class="num">{{ run.rows_seen }}</td>
+            <td class="num">{{ run.rows_imported }}</td>
+            <td class="num">{{ run.rows_flagged }}</td>
+            <td>{{ 'ok' if run.succeeded else (run.error or 'did not finish')|truncate(80) }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+{% endif %}
+
+{# --- Merging (admins) ---------------------------------------------------- #}
+
+{% if current_user.is_admin %}
+  <h2 id="merge">Two numbers, one mother</h2>
+  <p class="subtle">
+    If a mother lost her card and was given a new number, merge the old one into
+    the new one. Her visits on both count as one person. Nothing is rewritten, so
+    a merge can be undone.
+  </p>
+  <form method="post" action="{{ url_for('admin.merge_participants') }}" class="card"
+        data-confirm="Merge these two card numbers into one person?">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <div class="field-row field-row-end">
+      <label class="field"><span>Old number (retire)</span>
+        <input type="text" name="retiring" inputmode="numeric" maxlength="12" required></label>
+      <label class="field"><span>New number (keep)</span>
+        <input type="text" name="keeping" inputmode="numeric" maxlength="12" required></label>
+      <button class="btn btn-primary">Merge</button>
+    </div>
+  </form>
+  {% for p in merges %}
+    <div class="card card-row">
+      <span>{{ p.code }} → counts as the person on the other card</span>
+      <form method="post" action="{{ url_for('admin.unmerge_participant', participant_id=p.id) }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-quiet">Undo</button>
+      </form>
+    </div>
+  {% endfor %}
+{% endif %}
+
+{% endblock %}

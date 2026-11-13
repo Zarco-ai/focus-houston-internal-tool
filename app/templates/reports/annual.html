@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Annual report — {{ report.year }}{% endblock %}
+{% block main_class %}page page-wide{% endblock %}
+
+{% block content %}
+<div class="print-only print-heading"><strong>{{ report.title }}</strong></div>
+<h1>Annual report <span class="heading-period">{{ report.year }}</span></h1>
+<p class="subtle no-print">
+  The FOCUS North America template: every switched-on metric, a column per month,
+  and the year. The year is worked out over the whole year, not by adding the
+  months, so a mother counts once in Unique Clients and a rate is the year's rate.
+</p>
+
+<div class="card no-print">
+  <div class="card-actions">
+    <button type="button" class="btn btn-quiet" data-print>Print</button>
+    <a class="btn btn-quiet" href="{{ url_for('totals.index', year=report.year) }}">Back to Totals</a>
+    {% with kind='annual', year=report.year, month=None %}{% include "reports/_file_button.html" %}{% endwith %}
+  </div>
+  {% include "reports/_filed_status.html" %}
+</div>
+
+<div class="table-scroll">
+  <table class="report-sheet">
+    <thead>
+      <tr><th></th>{% for name in month_names %}<th class="num">{{ name }}</th>{% endfor %}<th class="num">Year</th></tr>
+    </thead>
+    <tbody>
+      {% for group in report.groups %}
+        <tr><th colspan="14" class="band-{{ group.group.key|lower }} sheet-band">{{ group.group.label }}</th></tr>
+        {% for row in group.rows %}
+          <tr>
+            <td class="sheet-label">{{ row.label }}</td>
+            {% for value in row.months %}<td class="num">{{ as_text(value, row.unit) if value is not none else ('' if row.frequency == 'annual' else '—') }}</td>{% endfor %}
+            <td class="num"><strong>{{ as_text(row.year, row.unit) }}</strong></td>
+          </tr>
+        {% endfor %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

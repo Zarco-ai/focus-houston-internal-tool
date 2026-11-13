@@ -1,0 +1,62 @@
+# --- Secrets and data ------------------------------------------------------
+# instance/ holds the SQLite database AND the generated signing key.
+# Neither belongs in a repository.
+instance/
+*.db
+*.sqlite
+*.sqlite3
+.env
+.env.*
+!.env.example
+secret_key
+*.pem
+*.key
+
+# --- Client material -------------------------------------------------------
+# The build prompts are working material, not part of the product.
+
+# The program director's own sheets and the Valuations workbook. They contain real
+# operational data (and partner/staff names), so they never enter git.
+# The folder on disk is references/; reference/ is the name the build prompt
+# uses, ignored too so neither spelling can slip in.
+reference/
+references/
+*.xlsx
+
+# --- Python ----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# --- Virtual environments --------------------------------------------------
+.venv/
+venv/
+ENV/
+env/
+
+# --- Testing and tooling ---------------------------------------------------
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+bandit-report.*
+pip-audit-report.*
+
+# --- Editors ---------------------------------------------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- OS --------------------------------------------------------------------
+.DS_Store
+Thumbs.db
+
+

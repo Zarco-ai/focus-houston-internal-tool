@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block title %}Sign in · FOCUS Houston{% endblock %}
+
+{% block content %}
+<div class="sign-in">
+  <h1>FOCUS Houston</h1>
+  <p class="subtle">Distribution tracking. Staff and volunteers only.</p>
+
+  {% if configured %}
+    <a class="btn btn-primary btn-big btn-block" href="{{ url_for('auth.start') }}">
+      Sign in with Google
+    </a>
+    <p class="subtle">
+      Use the Google account an admin added for you. FOCUS never sees or
+      stores your Google password.
+    </p>
+  {% else %}
+    <div class="card card-warn">
+      <p style="margin:0 0 8px"><strong>Google sign-in isn't set up on this copy of the app.</strong></p>
+      <p style="margin:0" class="subtle">
+        Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET — see
+        docs/GOOGLE_SIGN_IN_SETUP.md.
+      </p>
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

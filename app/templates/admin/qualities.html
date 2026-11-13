@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Unique qualities{% endblock %}
+
+{% block content %}
+
+<h1>Unique qualities</h1>
+<p class="subtle">
+  The checklist on the intake survey. Keep each one general — a situation, not
+  a story — and never a name. The survey lists them A–Z. Switching one off
+  removes it from new surveys; surveys that already ticked it keep it.
+</p>
+
+<form method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="field-row field-row-end">
+    <label class="field" style="flex:1">
+      <span>Add a quality</span>
+      <input type="text" name="label" required maxlength="100" placeholder="e.g. First pregnancy">
+    </label>
+    <button type="submit" class="btn btn-primary">Add</button>
+  </div>
+</form>
+
+<div class="table-scroll">
+  <table>
+    <thead><tr><th>Quality</th><th>On the survey</th><th></th></tr></thead>
+    <tbody>
+      {% for quality in qualities %}
+        <tr{% if not quality.active %} class="row-inactive"{% endif %}>
+          <td>
+            <form method="post" class="inline-form" action="{{ url_for('admin.edit_quality', quality_id=quality.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="text" name="label" value="{{ quality.label }}" required maxlength="100" aria-label="Wording of {{ quality.label }}">
+              <button type="submit" class="btn btn-quiet">Rename</button>
+            </form>
+          </td>
+          <td>{{ 'yes' if quality.active else 'no' }}</td>
+          <td>
+            <form method="post" action="{{ url_for('admin.edit_quality', quality_id=quality.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="active" value="{{ 'off' if quality.active else 'on' }}">
+              <button type="submit" class="btn btn-quiet">{{ 'Switch off' if quality.active else 'Switch back on' }}</button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="3" class="subtle">Nothing on the list yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<p><a href="{{ url_for('admin.settings') }}">Back to Settings</a></p>
+
+{% endblock %}

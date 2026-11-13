@@ -1,0 +1,10 @@
+{% if current_user.is_admin %}
+  <form method="post" action="{{ url_for('admin.file_report') }}" style="display:inline"
+        data-confirm="File this report? It saves exactly these numbers as the record of what was sent. It can't be changed afterwards.">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="hidden" name="kind" value="{{ kind }}">
+    <input type="hidden" name="year" value="{{ year }}">
+    {% if month %}<input type="hidden" name="month" value="{{ month }}">{% endif %}
+    <button class="btn btn-quiet">File this report</button>
+  </form>
+{% endif %}

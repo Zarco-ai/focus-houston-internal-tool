@@ -1,0 +1,266 @@
+{% extends "base.html" %}
+{% block title %}Intake{% endblock %}
+
+{% macro timer_display(session) -%}
+  <span class="timer-value" data-timer-seconds="{{ elapsed(session) }}"
+        data-timer-running="{{ 'true' if session.is_running else 'false' }}">{{ elapsed(session)|duration }}</span>
+{%- endmacro %}
+
+{% macro minutes(value) -%}
+  {%- if value is none -%}—{%- elif value >= slider_max -%}3+ hours{%- else -%}{{ value }} min{%- endif -%}
+{%- endmacro %}
+
+{% block content %}
+
+<h1>Intake</h1>
+<p class="subtle">
+  Start the timer when you sit down together; fill in the survey with her;
+  save. Saving gives her the card number and starts her 60-day clock. The
+  timer keeps going if you leave this page, refresh, or pick up another device.
+</p>
+
+{% if card_status.loaded == 0 %}
+  <div class="card card-warn">
+    <strong>No card numbers are loaded yet</strong>, so no survey can be saved.
+    {% if current_user.is_admin %}
+      <a href="{{ url_for('admin.card_numbers') }}">Load a card list</a>.
+    {% else %}An admin loads them under Settings → Card numbers.{% endif %}
+  </div>
+{% elif card_status.unused < 20 %}
+  <div class="card card-warn">
+    Only <strong>{{ card_status.unused }}</strong> unused card number{{ 's' if card_status.unused != 1 }} left.
+    Time to print a new batch (<code>python generate_cards.py</code>) and load it.
+  </div>
+{% endif %}
+
+{# --- The timer ----------------------------------------------------------- #}
+
+<h2>Timer</h2>
+<div class="card timer-card">
+  {% if current %}
+    <div class="timer-row">
+      <div>
+        <div class="timer-big">{{ timer_display(current) }}</div>
+        <div class="subtle">
+          {% if current.is_running %}Running since {{ current.started_at|local_datetime }}
+          {% elif current.is_paused %}Paused
+          {% elif current.timer_seconds is not none %}Stopped · {{ minutes(final_minutes(current)) }}
+          {% else %}No timer · time typed below{% endif %}
+          {% if current.started_by_id != current_user.id %} · started by {{ current.started_by.email }}{% endif %}
+        </div>
+      </div>
+      <div class="card-actions">
+        {# These buttons submit the survey form below to the timer's address,
+           so whatever has been typed travels with them and comes back. #}
+        {% if current.is_running %}
+          <button form="survey-form" formaction="{{ url_for('intake.pause', session_id=current.id) }}"
+                  formnovalidate class="btn btn-quiet btn-big">Pause</button>
+        {% elif current.is_paused %}
+          <button form="survey-form" formaction="{{ url_for('intake.resume', session_id=current.id) }}"
+                  formnovalidate class="btn btn-primary btn-big">Resume</button>
+        {% endif %}
+        {% if current.is_active %}
+          <button form="survey-form" formaction="{{ url_for('intake.stop', session_id=current.id) }}"
+                  formnovalidate class="btn btn-quiet btn-big">Stop</button>
+        {% endif %}
+      </div>
+    </div>
+    <div class="card-actions timer-secondary">
+      {% if current.batch_id %}
+        <a class="btn btn-quiet" href="{{ url_for('entry.entry_screen', batch_id=current.batch_id) }}">Open this intake's batch</a>
+      {% else %}
+        <button form="survey-form" formaction="{{ url_for('intake.start_batch', session_id=current.id) }}"
+                formnovalidate class="btn btn-quiet">Start a batch for this intake</button>
+      {% endif %}
+      <form method="post" action="{{ url_for('intake.discard', session_id=current.id) }}"
+            data-confirm="Throw this intake away? The time is lost; nothing else is affected.">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button class="btn btn-danger">Discard</button>
+      </form>
+    </div>
+  {% else %}
+    <button form="survey-form" formaction="{{ url_for('intake.start') }}" formnovalidate
+            class="btn btn-primary btn-big btn-block">Start intake timer</button>
+    <p class="subtle" style="margin-bottom:0">
+      No timer? You can still save the survey below and type the time with the slider.
+    </p>
+  {% endif %}
+</div>
+
+{% if others %}
+  <p class="subtle">You also have {{ others|length }} unfinished intake{{ 's' if others|length != 1 }}:
+    {% for other in others %}
+      <a href="{{ url_for('intake.page', session=other.id) }}">started {{ other.started_at|local_datetime }}</a>{{ ',' if not loop.last }}
+    {% endfor %}
+  </p>
+{% endif %}
+
+{# --- The survey ----------------------------------------------------------- #}
+
+<h2>Intake survey</h2>
+<form method="post" action="{{ url_for('intake.save_survey') }}" class="card survey-form"
+      id="survey-form" data-unsaved-warning>
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="survey_form" value="1">
+  {% if current %}<input type="hidden" name="session_id" value="{{ current.id }}">{% endif %}
+
+  <div class="field-row">
+    <label class="field">
+      <span>Card number</span>
+      <input type="text" name="card_number" inputmode="numeric" maxlength="12" required autocomplete="off"
+             value="{{ form.get('card_number') or card_status.next or '' }}">
+      <small class="field-help">
+        The next unused number on the printed sheet is filled in. Change it if
+        you gave out a different card. Write her name on the paper sheet only.
+      </small>
+    </label>
+    <label class="field">
+      <span>Date</span>
+      <input type="date" name="survey_date" required max="{{ today.isoformat() }}"
+             value="{{ form.get('survey_date') or today.isoformat() }}">
+      <small class="field-help">Today, or an earlier day. Never a future date.</small>
+    </label>
+  </div>
+
+  <label class="field">
+    <span>Reason for joining</span>
+    <textarea name="reason_for_joining" maxlength="300" rows="2">{{ form.get('reason_for_joining', '') }}</textarea>
+    <small class="field-help no-names">No names — hers or anyone else's. Up to 300 characters.</small>
+  </label>
+
+  <fieldset class="count-section">
+    <legend>Unique qualities</legend>
+    {% if qualities %}
+      <div class="check-grid">
+        {% set ticked = form.getlist('quality') if form.getlist else [] %}
+        {% for quality in qualities %}
+          <label class="check">
+            <input type="checkbox" name="quality" value="{{ quality.id }}"
+                   {% if quality.id|string in ticked %}checked{% endif %}>
+            <span>{{ quality.label }}</span>
+          </label>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="subtle">No qualities on the list yet.{% if current_user.is_admin %}
+        <a href="{{ url_for('admin.qualities') }}">Add some</a>.{% endif %}</p>
+    {% endif %}
+    <label class="field">
+      <span>Note</span>
+      <input type="text" name="qualities_note" maxlength="200" value="{{ form.get('qualities_note', '') }}">
+      <small class="field-help no-names">No names. Up to 200 characters. Seen only by signed-in staff; in no export.</small>
+    </label>
+  </fieldset>
+
+  <div class="field-row">
+    <label class="field" style="flex:0 0 9em">
+      <span>Come back, 1–10</span>
+      <select name="come_back_score">
+        <option value="">—</option>
+        {% for n in range(1, 11) %}
+          <option value="{{ n }}" {% if form.get('come_back_score') == n|string %}selected{% endif %}>{{ n }}</option>
+        {% endfor %}
+      </select>
+    </label>
+    <label class="field">
+      <span>Why?</span>
+      <input type="text" name="come_back_reason" maxlength="300" value="{{ form.get('come_back_reason', '') }}">
+    </label>
+  </div>
+  <small class="field-help">
+    "Based on your overall experience, how likely are you to come back to join
+    the overall program (classes, distribution days, volunteering, etc.) on a
+    scale from 1–10, and why?"
+  </small>
+
+  <fieldset class="count-section slider-section">
+    <legend>Time the intake took</legend>
+    {% set slider_value = form.get('slider_minutes') or (final_minutes(current) if current and final_minutes(current) is not none else 30) %}
+    <input type="range" name="slider_minutes" min="0" max="{{ slider_max }}" step="{{ slider_step }}"
+           value="{{ [((slider_value|int) // slider_step) * slider_step, slider_max]|min }}"
+           data-slider-output="slider-shown" aria-label="Time the intake took, in minutes">
+    <output id="slider-shown" class="slider-shown">{{ minutes([((slider_value|int) // slider_step) * slider_step, slider_max]|min) }}</output>
+    <label class="check">
+      <input type="checkbox" name="use_slider" value="1" data-slider-use
+             {% if form.get('use_slider') or not current %}checked{% endif %}>
+      <span>{% if current %}Use this instead of the timer{% else %}Record this time{% endif %}</span>
+    </label>
+    <small class="field-help">
+      {% if current %}The timer is what counts unless you tick this box. Both are kept.
+      {% else %}No timer is running, so this is the intake's time. Untick it if you don't know.{% endif %}
+    </small>
+  </fieldset>
+
+  <button type="submit" class="btn btn-primary btn-big btn-block"
+          {% if card_status.loaded == 0 %}disabled{% endif %}>Save intake</button>
+  <p class="subtle" style="margin-bottom:0">
+    {% if current and current.is_active %}Saving stops the timer. {% endif %}
+    Pausing or stopping the timer keeps your answers; they stay until you save or discard.
+  </p>
+</form>
+
+{# --- Waiting for someone ---------------------------------------------------- #}
+
+{% if flagged %}
+  <h2>Times to check</h2>
+  <p class="subtle">
+    These ran longer than {{ flag_hours }} hour{{ 's' if flag_hours != 1 }}, or past midnight,
+    so they don't count until someone confirms or corrects them. A forgotten timer is the usual reason.
+  </p>
+  {% for session in flagged %}
+    <div class="card card-warn">
+      <div class="card-row">
+        <span>
+          Started {{ session.started_at|local_datetime }} · {{ elapsed(session)|duration }}
+          {% if session.started_by_id != current_user.id %} · {{ session.started_by.email }}{% endif %}
+          {% if session.is_active %} · <strong>still running</strong>{% endif %}
+        </span>
+        {% if session.is_stopped %}
+          <form method="post" action="{{ url_for('intake.confirm', session_id=session.id) }}">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button class="btn btn-quiet">It's right</button>
+          </form>
+        {% endif %}
+      </div>
+      {% if session.is_stopped %}
+        <form method="post" action="{{ url_for('intake.correct_time', session_id=session.id) }}" class="inline-form" style="margin-top:8px">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <label class="subtle" for="fix-{{ session.id }}">Correct to</label>
+          <select id="fix-{{ session.id }}" name="slider_minutes">
+            {% for m in range(0, slider_max + 1, slider_step) %}
+              <option value="{{ m }}" {% if m == 30 %}selected{% endif %}>{{ minutes(m) }}</option>
+            {% endfor %}
+          </select>
+          <button class="btn btn-quiet">Save</button>
+        </form>
+      {% else %}
+        <p class="subtle" style="margin:8px 0 0">Stop it first, then confirm or correct it.</p>
+      {% endif %}
+    </div>
+  {% endfor %}
+{% endif %}
+
+<h2>Recent intakes</h2>
+<div class="table-scroll">
+  <table>
+    <thead>
+      <tr><th>Date</th><th>Card</th><th class="num">Time</th><th>From</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for survey in recent %}
+        {% set s = survey.session %}
+        <tr>
+          <td>{{ survey.survey_date.strftime('%b %-d, %Y') }}</td>
+          <td>{{ survey.participant.code }}</td>
+          <td class="num">{{ minutes(final_minutes(s)) if s else '—' }}</td>
+          <td>{{ source_labels.get(duration_source(s), 'no time') if s else 'no time' }}</td>
+          <td>{% if s and needs_confirmation(s) %}<span class="tag tag-confirm">check time</span>{% endif %}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="subtle">No intakes yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% endblock %}

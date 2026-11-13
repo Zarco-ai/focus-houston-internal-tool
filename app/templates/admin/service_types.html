@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Service types{% endblock %}
+
+{% block content %}
+
+<h1>Service types</h1>
+<p class="subtle">
+  The kinds of session a batch can be. Renaming one renames it on every batch,
+  past ones included. Switching one off stops it being offered for new batches;
+  batches that already use it keep it. Nothing here is ever deleted.
+</p>
+
+<form method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="field-row field-row-end">
+    <label class="field" style="flex:1">
+      <span>Add a service type</span>
+      <input type="text" name="name" required maxlength="100" placeholder="e.g. Mom's Conference">
+    </label>
+    <button type="submit" class="btn btn-primary">Add</button>
+  </div>
+</form>
+
+<div class="table-scroll">
+  <table>
+    <thead>
+      <tr><th>Name</th><th>Offered for new batches</th><th></th></tr>
+    </thead>
+    <tbody>
+      {% for service_type in service_types %}
+        <tr{% if not service_type.active %} class="row-inactive"{% endif %}>
+          <td>
+            <form method="post" class="inline-form"
+                  action="{{ url_for('admin.edit_service_type', service_type_id=service_type.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="text" name="name" value="{{ service_type.name }}" required maxlength="100"
+                     aria-label="Name of {{ service_type.name }}">
+              <button type="submit" class="btn btn-quiet">Rename</button>
+            </form>
+          </td>
+          <td>{{ 'yes' if service_type.active else 'no — switched off' }}</td>
+          <td>
+            <form method="post"
+                  action="{{ url_for('admin.edit_service_type', service_type_id=service_type.id) }}">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+              <input type="hidden" name="active" value="{{ 'off' if service_type.active else 'on' }}">
+              <button type="submit" class="btn btn-quiet">
+                {{ 'Switch off' if service_type.active else 'Switch back on' }}
+              </button>
+            </form>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="3" class="subtle">No service types yet.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<p><a href="{{ url_for('admin.settings') }}">Back to Settings</a></p>
+
+{% endblock %}

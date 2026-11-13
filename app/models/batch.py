@@ -1,0 +1,331 @@
+"""What went out, on what day.
+
+  batch      One distribution session. Starts as a draft, becomes committed
+             when approved. The date defaults to today and is never typed by
+             hand.
+
+  line_item  One item at one quantity in one condition. When a batch is
+             committed the line freezes BOTH the unit price and the used
+             multiplier it was valued at, so last year's report still adds up
+             to last year's number after the catalog changes.
+
+  attendance Head counts for the session. Counts only -- no names, ever.
+"""
+
+import datetime
+
+import sqlalchemy as sa
+from sqlalchemy import CheckConstraint
+
+from app.constants import (
+    CONDITION_NEW,
+    STALE_DRAFT_DAYS,
+    STATUS_COMMITTED,
+    STATUS_DRAFT,
+    category_short_label,
+)
+from app.extensions import db
+from app.models.money import Money
+from app.services import clock, valuation
+
+
+class Batch(db.Model):
+    __tablename__ = "batch"
+
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(
+        db.Date, nullable=False, default=clock.local_today, index=True
+    )
+    service_type_id = db.Column(
+        db.Integer, db.ForeignKey("service_type.id"), nullable=True
+    )
+
+    # Free text about the goods or the session. NOT for names -- the entry
+    # form says so out loud and the README explains why.
+    note = db.Column(db.Text, nullable=True)
+
+    status = db.Column(
+        db.String(20), nullable=False, default=STATUS_DRAFT, index=True
+    )
+    committed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    service_type = db.relationship("ServiceType")
+    lines = db.relationship(
+        "LineItem",
+        back_populates="batch",
+        cascade="all, delete-orphan",
+        order_by="LineItem.id",
+    )
+    attendance = db.relationship(
+        "Attendance",
+        back_populates="batch",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+
+    # --- Status ------------------------------------------------------------
+
+    @property
+    def is_draft(self):
+        return self.status == STATUS_DRAFT
+
+    @property
+    def is_committed(self):
+        return self.status == STATUS_COMMITTED
+
+    @property
+    def is_stale(self):
+        """A draft left over from a previous distribution day. Flagged on the
+        home screen, never auto-deleted and never auto-approved."""
+        if not self.is_draft:
+            return False
+        cutoff = clock.local_today() - datetime.timedelta(days=STALE_DRAFT_DAYS)
+        return self.date <= cutoff
+
+    # --- Contents ----------------------------------------------------------
+
+    @property
+    def active_lines(self):
+        """Lines that actually count. A quantity of zero contributes nothing
+        and does not appear in the batch."""
+        return [line for line in self.lines if line.quantity > 0]
+
+    @property
+    def item_count(self):
+        return sum(line.quantity for line in self.active_lines)
+
+    @property
+    def total_value(self):
+        total = valuation.ZERO
+        for line in self.active_lines:
+            if line.computed_value is not None:
+                total += line.computed_value
+        return total
+
+    @property
+    def unpriced_lines(self):
+        """Lines with a quantity but no value on them yet -- see
+        LineItem.needs_price, which counts a price of zero as no value.
+
+        These do NOT block approval. Approving flags them for review and saves
+        the batch as it stands -- see commit_batch(). Holding up a whole day's
+        counting over one unknown price loses more than it protects.
+        """
+        return [line for line in self.active_lines if line.needs_price]
+
+    @property
+    def needs_review(self):
+        """Something went out of here at no recorded value.
+
+        This is what puts the "Needs Review" flag on an approved batch on the
+        home screen, and it is deliberately narrower than flagged_lines: a
+        custom line that already has a real price is waiting for a category, not
+        for a number, and the home screen does not shout about that.
+        """
+        return bool(self.unpriced_lines)
+
+    @property
+    def flagged_lines(self):
+        return [line for line in self.active_lines if line.needs_review]
+
+    def __repr__(self):
+        return f"<Batch {self.id} {self.date} {self.status}>"
+
+
+class LineItem(db.Model):
+    __tablename__ = "line_item"
+    __table_args__ = (
+        # Belt and braces. The service layer clamps at zero too.
+        CheckConstraint("quantity >= 0", name="ck_line_item_quantity_not_negative"),
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    batch_id = db.Column(
+        db.Integer, db.ForeignKey("batch.id"), nullable=False, index=True
+    )
+
+    # Null for a custom "not on this list" item until someone resolves it in
+    # the review queue.
+    item_id = db.Column(db.Integer, db.ForeignKey("item.id"), nullable=True)
+    custom_name = db.Column(db.String(200), nullable=True)
+    custom_note = db.Column(db.Text, nullable=True)
+
+    quantity = db.Column(db.Integer, nullable=False, default=0)
+    condition = db.Column(db.String(10), nullable=False, default=CONDITION_NEW)
+
+    # Frozen at commit. Never look these up from the catalog afterwards.
+    unit_price_at_time = db.Column(Money, nullable=True)
+    used_multiplier_at_time = db.Column(db.Float, nullable=True)
+    computed_value = db.Column(Money, nullable=True)
+    # The report bucket, frozen the same way: changing an item's bucket later
+    # sorts future batches differently and leaves reported months alone.
+    # NULL on a draft (it follows the item) and on an unsorted custom line.
+    report_bucket_at_time = db.Column(db.String(50), nullable=True)
+
+    # Someone typed this line's price or used rate on the review screen, so
+    # the catalog's value must not overwrite it when the draft is next saved.
+    price_typed = db.Column(db.Boolean, nullable=False, default=False,
+                            server_default=sa.false())
+    used_rate_typed = db.Column(db.Boolean, nullable=False, default=False,
+                                server_default=sa.false())
+
+    needs_review = db.Column(db.Boolean, nullable=False, default=False, index=True)
+    reviewed_at = db.Column(db.DateTime(timezone=True), nullable=True)
+
+    batch = db.relationship("Batch", back_populates="lines")
+    item = db.relationship("Item")
+
+    # --- Display -----------------------------------------------------------
+
+    @property
+    def is_custom(self):
+        return self.item_id is None
+
+    @property
+    def display_name(self):
+        """Name plus category, everywhere, always. On an unresolved custom
+        line there is no category yet, so say so."""
+        if self.item is not None:
+            return self.item.display_name
+        return f"{self.custom_name} · not in catalog"
+
+    @property
+    def category(self):
+        return self.item.category if self.item else None
+
+    @property
+    def category_short(self):
+        return category_short_label(self.item.category) if self.item else None
+
+    @property
+    def report_bucket(self):
+        """The bucket frozen at approval; on a draft, the item's current one.
+        None for a custom line nobody has sorted yet -- the totals view shows
+        those separately rather than dropping them."""
+        if self.report_bucket_at_time is not None:
+            return self.report_bucket_at_time
+        return self.item.report_bucket if self.item else None
+
+    @property
+    def is_priced(self):
+        return self.unit_price_at_time is not None
+
+    @property
+    def needs_price(self):
+        """Counting something, but nobody has said what it is worth yet.
+
+        Two things land here and they mean the same thing: no price was typed at
+        all, or the price is zero. Zero is not a value in this app, it is the
+        absence of one -- a custom item starts at zero precisely so she does not
+        have to invent a number mid-distribution -- so a zero line belongs in the
+        review queue however it got there. Never priced, priced at zero from the
+        queue, or corrected back down to zero on the review screen: same line,
+        same missing number, same queue.
+
+        A manual-price item starts out like this. It is not an error and it does
+        not stop the batch being approved -- the quantity is real and worth
+        keeping. The line is flagged for review at approval and the value is
+        filled in from the review queue afterwards.
+        """
+        if self.quantity <= 0:
+            return False
+        return self.unit_price_at_time is None or self.unit_price_at_time == 0
+
+    # --- Valuation ---------------------------------------------------------
+
+    def recalculate(self):
+        """Recompute computed_value from what is stored ON THIS LINE.
+
+        This deliberately does not consult the catalog. Whoever changes the
+        price is responsible for putting it on the line first, which keeps
+        committed history frozen.
+        """
+        self.computed_value = valuation.line_value(
+            quantity=self.quantity,
+            unit_price=self.unit_price_at_time,
+            used_multiplier=self.used_multiplier_at_time,
+            condition=self.condition,
+        )
+        return self.computed_value
+
+    def __repr__(self):
+        return f"<LineItem {self.display_name} x{self.quantity} {self.condition}>"
+
+
+class Attendance(db.Model):
+    """Head counts and per-event figures for a session.
+
+    Counts only. There is no name field here and there must never be one --
+    FOCUS does not need identities to report, and not storing them is the
+    safest way to protect the mothers who come through the door.
+
+    Every column is optional to fill: 0 means "none, or not counted". Which
+    ones the review screen offers, their labels and their report rows are in
+    app/services/attendance.py. Money is cents (Money); volunteer hours are
+    whole tenths of an hour, so 2.5 hours is 25 -- no floats.
+    """
+
+    __tablename__ = "attendance"
+    __table_args__ = tuple(
+        CheckConstraint(f"{name} >= 0", name=f"ck_attendance_{name}_not_negative")
+        for name in (
+            "individuals_served",
+            "children_served",
+            "education_participants_unique",
+            "education_participants_total",
+            "education_sessions_held",
+            "case_management_served",
+            "medical_services_served",
+            "temp_employment_placed",
+            "meals_value",
+            "volunteers_total",
+            "volunteer_hours_tenths",
+            "volunteer_opportunities",
+            "unique_clients_event_count",
+            "unique_volunteers_event_count",
+            "unique_parishes_event_count",
+        )
+    )
+
+    id = db.Column(db.Integer, primary_key=True)
+    batch_id = db.Column(
+        db.Integer, db.ForeignKey("batch.id"), nullable=False, unique=True
+    )
+
+    individuals_served = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    children_served = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+
+    # UNDERSTANDING
+    education_participants_unique = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    education_participants_total = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    education_sessions_held = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    case_management_served = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    medical_services_served = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+
+    # OCCUPATION and FOOD
+    temp_employment_placed = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    meals_value = db.Column(Money, nullable=False, default=0, server_default="0")
+
+    # VOLUNTEERS
+    volunteers_total = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    volunteer_hours_tenths = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    volunteer_opportunities = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+
+    # UNIQUE, as counted at each event. Summed over a month these are not
+    # unique any more, and every screen that shows them says so.
+    unique_clients_event_count = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    unique_volunteers_event_count = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+    unique_parishes_event_count = db.Column(db.Integer, nullable=False, default=0, server_default="0")
+
+    batch = db.relationship("Batch", back_populates="attendance")
+
+    @property
+    def has_any_count(self):
+        """Anything above zero. An attendance-only batch (a class with no
+        goods) needs this to be approved."""
+        from app.services.attendance import FIELDS
+
+        return any(getattr(self, field.name) for field in FIELDS)
+
+    def __repr__(self):
+        return f"<Attendance batch={self.batch_id}>"

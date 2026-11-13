@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}No access · FOCUS Houston{% endblock %}
+
+{% block content %}
+<div class="sign-in">
+  <h1>This account doesn't have access</h1>
+  <p>
+    {% if email %}You signed in with <strong>{{ email }}</strong>, which isn't{% else %}That Google account isn't{% endif %}
+    on the list of people who can use FOCUS.
+  </p>
+  <p class="subtle">
+    If you should have access, ask a FOCUS admin to add this email address on
+    the Users page. If you meant to use a different Google account, sign in again
+    and choose that one.
+  </p>
+  <a class="btn btn-quiet btn-block" href="{{ url_for('auth.login') }}">Back to sign in</a>
+</div>
+{% endblock %}

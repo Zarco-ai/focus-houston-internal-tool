@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+
+{% block content %}
+
+<h1>Settings</h1>
+
+<div class="card">
+  <div class="card-actions">
+    <a class="btn btn-quiet" href="{{ url_for('admin.service_type_list') }}">Service types</a>
+    <a class="btn btn-quiet" href="{{ url_for('admin.metric_settings') }}">Report metrics</a>
+    <a class="btn btn-quiet" href="{{ url_for('admin.annual_figures') }}">Annual figures</a>
+    <a class="btn btn-quiet" href="{{ url_for('admin.card_numbers') }}">Card numbers</a>
+    <a class="btn btn-quiet" href="{{ url_for('admin.qualities') }}">Unique qualities</a>
+    <a class="btn btn-quiet" href="{{ url_for('admin.form_events') }}">Form event names</a>
+    <a class="btn btn-quiet" href="{{ url_for('admin.history_import') }}">Import earlier sheets</a>
+    <a class="btn btn-quiet" href="{{ url_for('admin.delete_day') }}">Delete a day's test data</a>
+  </div>
+</div>
+
+<h2>Activity window</h2>
+<form method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="field-row field-row-end">
+    <label class="field" style="flex:1">
+      <span>A mother counts as active for this many days after a visit</span>
+      <input type="number" name="activity_window_days" min="7" max="365" step="1" value="{{ window_days }}">
+      <small class="field-help">
+        Retention, engagement and turnover all use it. Changing it changes every
+        past period's numbers too, because they are worked out from the visits,
+        not stored.
+      </small>
+    </label>
+    <button type="submit" class="btn btn-primary">Save</button>
+  </div>
+</form>
+
+<h2>Intake timers</h2>
+<form method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <div class="field-row field-row-end">
+    <label class="field" style="flex:1">
+      <span>Ask someone to check an intake time after this many hours</span>
+      <input type="number" name="intake_flag_hours" min="1" max="12" step="1" value="{{ flag_hours }}">
+      <small class="field-help">A timer that runs longer than this, or past midnight, doesn't count until someone confirms or corrects it.</small>
+    </label>
+    <button type="submit" class="btn btn-primary">Save</button>
+  </div>
+</form>
+
+<h2>How approving works</h2>
+<p class="subtle">
+  All three of these work right now. Try each one and keep whichever fits the
+  way a distribution day actually runs.
+</p>
+
+<form method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  {% for mode, label in [
+      ('per_batch', 'Review and approve each batch'),
+      ('per_mother', 'Approve, then start the next one right away'),
+      ('auto', 'Save entries automatically, no approval step')] %}
+    <label class="field" style="border-bottom:1px solid var(--line); padding-bottom:12px">
+      <span>
+        <input type="radio" name="commit_mode" value="{{ mode }}"
+               {% if current_mode == mode %}checked{% endif %}>
+        {{ label }}
+      </span>
+      <small class="field-help">
+        {% if mode == 'per_batch' %}
+          Count everything, look it over on the review screen, then approve.
+          Approving takes you back to the home screen.
+        {% elif mode == 'per_mother' %}
+          Same as above, but approving opens a new empty batch straight away.
+          Good if you want one batch per person.
+        {% else %}
+          Counts are saved as you enter them, with no review step. An item whose
+          price you have not typed is saved too, and listed in the review queue
+          so you can put a value on it later.
+        {% endif %}
+      </small>
+    </label>
+  {% endfor %}
+
+  <button type="submit" class="btn btn-primary" style="margin-top:12px">Save</button>
+</form>
+
+<h2>What this system does not store</h2>
+<div class="card">
+  <p style="margin:0 0 8px">
+    There are no names anywhere in this system, and no records about the people
+    it serves. Attendance is counts only.
+  </p>
+  <p style="margin:0" class="subtle">
+    This is deliberate. Please do not type anyone's name into a note or a custom
+    item description.
+  </p>
+</div>
+
+{% endblock %}

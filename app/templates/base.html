@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{% block title %}FOCUS Houston{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+
+<header class="topbar">
+  <a class="topbar-brand" href="{{ url_for('home.index') if current_user else url_for('auth.login') }}">FOCUS Houston</a>
+  {% if current_user %}
+    <nav class="topbar-nav">
+      {% if current_user.is_admin %}<a href="{{ url_for('intake.page') }}">Intake</a>{% endif %}
+      <a href="{{ url_for('totals.index') }}">Totals</a>
+      <a href="{{ url_for('review.queue') }}">Review</a>
+      {% if current_user.is_admin %}<a href="{{ url_for('responses.page') }}">Responses</a>{% endif %}
+      <a href="{{ url_for('admin.items') }}">Items</a>
+      {% if current_user.is_admin %}
+        <a href="{{ url_for('admin.settings') }}">Settings</a>
+        <a href="{{ url_for('users.index') }}">Users</a>
+      {% endif %}
+    </nav>
+  {% endif %}
+</header>
+
+{% if current_user %}
+  <div class="signed-in-bar">
+    <span class="subtle">Signed in as {{ current_user.email }} · {{ current_user.role_label }}</span>
+    <form method="post" action="{{ url_for('auth.logout') }}">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+      <button type="submit" class="link-button">Sign out</button>
+    </form>
+  </div>
+{% endif %}
+
+{% if intake_banner and not intake_banner.on_intake_page %}
+  <a class="intake-banner{{ ' intake-banner-paused' if intake_banner.session.is_paused }}"
+     href="{{ url_for('intake.page', session=intake_banner.session.id) }}">
+    <span>Intake {{ 'paused' if intake_banner.session.is_paused else 'timer running' }}</span>
+    <strong data-timer-seconds="{{ intake_banner.seconds }}"
+            data-timer-running="{{ 'true' if intake_banner.session.is_running else 'false' }}">{{ intake_banner.seconds|duration }}</strong>
+    <span class="intake-banner-link">Back to intake ›</span>
+  </a>
+{% endif %}
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}
+    <div class="flashes">
+      {% for category, message in messages %}
+        <p class="flash flash-{{ category }}">{{ message }}</p>
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}
+
+<main class="{% block main_class %}page{% endblock %}">
+  {% block content %}{% endblock %}
+</main>
+
+{% block footer %}{% endblock %}
+<script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+{% block scripts %}{% endblock %}
+
+</body>
+</html>

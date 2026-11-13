@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}Page not found · FOCUS Houston{% endblock %}
+
+{% block content %}
+<div class="sign-in">
+  <h1>Page not found</h1>
+  <p>That page doesn't exist. It may have been moved, or the link may be mistyped.</p>
+  <a class="btn btn-quiet btn-block" href="{{ url_for('home.index') }}">Go to the home screen</a>
+</div>
+{% endblock %}

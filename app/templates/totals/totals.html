@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+{% block title %}Totals — {{ period.label }}{% endblock %}
+
+{% macro metric_value(row) -%}
+  {%- if row.value is none and row.unit == 'percent' -%}
+    <span class="subtle">n/a</span>
+  {%- elif row.value is none and row.frequency != 'annual' -%}
+    <span class="subtle">—</span>
+  {%- elif row.value is none -%}
+    <span class="subtle">{{ 'whole year only' if period.kind != 'year' else 'not entered' }}</span>
+  {%- elif row.unit == 'percent' -%}
+    {{ row.value }}%
+  {%- elif row.unit == 'minutes' -%}
+    {{ row.value }} min
+  {%- elif row.unit == 'money' -%}
+    {{ row.value|money }}
+  {%- elif row.unit == 'hours' -%}
+    {{ row.value }}
+  {%- else -%}
+    {{ '{:,}'.format(row.value) }}
+  {%- endif -%}
+{%- endmacro %}
+
+{% block content %}
+
+<div class="print-only print-heading">
+  <strong>FOCUS Houston Metrics — {{ period.label }}</strong>
+  <span>{{ start_date.strftime('%b %-d, %Y') }} to {{ end_date.strftime('%b %-d, %Y') }} · printed {{ printed_on.strftime('%b %-d, %Y') }}</span>
+</div>
+
+<div class="page-heading">
+  <h1>Totals <span class="heading-period">{{ period.label }}</span></h1>
+  <div class="no-print period-steps">
+    {% if period.previous %}<a class="btn btn-quiet" href="{{ period.previous }}" aria-label="Previous {{ period.kind }}">‹</a>{% endif %}
+    {% if period.next %}<a class="btn btn-quiet" href="{{ period.next }}" aria-label="Next {{ period.kind }}">›</a>{% endif %}
+  </div>
+</div>
+<p class="subtle">
+  Approved batches only. Drafts are not counted until they are approved.
+  Every number is worked out from what was counted; none is typed as a total.
+</p>
+
+{% if period.error %}<p class="flash flash-warn">{{ period.error }}</p>{% endif %}
+
+<div class="card no-print period-picker">
+  <form method="get" action="{{ url_for('totals.index') }}" class="period-form">
+    <label class="field">
+      <span>Month</span>
+      <input type="month" name="month" value="{{ period.month_value }}" min="2000-01" max="2100-12">
+    </label>
+    <button type="submit" class="btn btn-quiet">Show month</button>
+  </form>
+  <form method="get" action="{{ url_for('totals.index') }}" class="period-form">
+    <label class="field">
+      <span>Year</span>
+      <input type="number" name="year" value="{{ period.year_value }}" min="2000" max="2100" step="1">
+    </label>
+    <button type="submit" class="btn btn-quiet">Show year</button>
+  </form>
+  <form method="get" action="{{ url_for('totals.index') }}" class="period-form period-form-range">
+    <label class="field">
+      <span>From</span>
+      <input type="date" name="start" value="{{ start_date.isoformat() }}">
+    </label>
+    <label class="field">
+      <span>To</span>
+      <input type="date" name="end" value="{{ end_date.isoformat() }}">
+    </label>
+    <button type="submit" class="btn btn-quiet">Show range</button>
+  </form>
+  <div class="card-actions">
+    <button type="button" class="btn btn-quiet" data-print>Print</button>
+    {% if current_user.is_admin %}<a class="btn btn-quiet" href="#reports">Reports &amp; exports</a>{% endif %}
+  </div>
+</div>
+
+{% if unpriced_count or unsorted %}
+  <div class="card card-warn">
+    {% if unpriced_count %}
+      <p style="margin:0 0 4px">
+        <strong>{{ unpriced_count }} line{{ 's' if unpriced_count != 1 }} in this period
+        {{ 'have' if unpriced_count != 1 else 'has' }} no value yet</strong>, so the dollar
+        figures below are short by whatever those are worth.
+        <a class="no-print" href="{{ url_for('review.queue') }}">Open the review queue</a>
+      </p>
+    {% endif %}
+    {% if unsorted %}
+      <p style="margin:0">
+        <strong>{{ unsorted.quantity }} item{{ 's' if unsorted.quantity != 1 }}
+        ({{ unsorted.value|money }}) {{ 'are' if unsorted.quantity != 1 else 'is' }} not in the
+        catalog yet</strong>, so {{ 'they are' if unsorted.quantity != 1 else 'it is' }} in no
+        row below until sorted in the review queue.
+      </p>
+    {% endif %}
+  </div>
+{% endif %}
+
+<div class="report">
+  {% for report_group in groups %}
+    {% set group = report_group.group %}
+    <section class="report-group band-{{ group.key|lower }}">
+      <h2 class="report-band">{{ group.label }}</h2>
+      <div class="report-rows">
+        {% if group.note %}<p class="report-note">{{ group.note }}</p>{% endif %}
+        <table class="report-table">
+          <tbody>
+            {% for row in report_group.rows %}
+              <tr class="{{ 'row-money' if row.is_money }}{{ ' row-total' if row.key == 'non_food_gik' }}">
+                <th scope="row">
+                  {{ row.label }}
+                  {% if row.detail %}<small class="report-detail">{{ row.detail }}</small>{% endif %}
+                  <small class="report-source">{{ row.source }}{% if row.definition %} — {{ row.definition }}{% endif %}</small>
+                </th>
+                <td class="num">{{ metric_value(row) }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {% else %}
+    <p class="subtle">Every metric is switched off. An admin can switch them on under Settings → Report metrics.</p>
+  {% endfor %}
+</div>
+
+{# Staff see the date range and the metrics only (app/auth.py). #}
+{% if current_user.is_admin %}
+<h2 id="reports">Reports &amp; exports</h2>
+<div class="card no-print reports-actions">
+  {% if period.kind == 'month' %}
+    <div class="card-actions">
+      <a class="btn btn-primary" href="{{ url_for('reports.monthly_page', month=period.month_value) }}">Monthly report — {{ period.label }}</a>
+    </div>
+  {% elif period.kind == 'year' %}
+    <div class="card-actions">
+      <a class="btn btn-primary" href="{{ url_for('reports.annual_page', year=period.year_value) }}">Annual report — {{ period.label }}</a>
+    </div>
+  {% else %}
+    <p class="subtle" style="margin-top:0">Pick a month or a year above for the monthly or annual report.</p>
+  {% endif %}
+  <div class="card-actions">
+    {% if report_sheet_ready %}
+      <form method="post" action="{{ url_for('totals.fill_report_sheet', **request.args) }}" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <button type="submit" class="btn btn-primary">Fill the report Sheet — {{ period.label }}</button>
+      </form>
+      {% if report_sheet_link %}
+        <a class="btn btn-quiet" href="{{ report_sheet_link }}" target="_blank" rel="noopener noreferrer">Open the new tab</a>
+      {% endif %}
+    {% else %}
+      <p class="subtle" style="margin:0">The report Sheet isn't set up yet (docs/GOOGLE_REPORT_SHEET_SETUP.md).</p>
+    {% endif %}
+  </div>
+  <div class="card-actions">
+    <a class="btn btn-quiet" href="{{ url_for('totals.export', start=start_date.isoformat(), end=end_date.isoformat()) }}">Line items (.csv)</a>
+    <a class="btn btn-quiet" href="{{ url_for('reports.retention_csv', start=start_date.isoformat(), end=end_date.isoformat()) }}">Retention by month (.csv)</a>
+    <a class="btn btn-quiet" href="{{ url_for('reports.program_health_csv', start=start_date.isoformat(), end=end_date.isoformat()) }}">Program Health (.csv)</a>
+    <a class="btn btn-quiet" href="{{ url_for('reports.filed_list') }}">Filed reports</a>
+  </div>
+</div>
+
+<h2>By report bucket</h2>
+<p class="subtle">
+  Every item counts towards exactly one bucket, frozen when its batch was
+  approved. Diapers, formula, food and transportation are never added into
+  clothing, hygiene or household.
+</p>
+
+<div class="table-scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Bucket</th>
+        <th class="num">Items</th>
+        <th class="num">Value</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for bucket in summary.buckets %}
+        <tr>
+          <td>{{ bucket.label }}</td>
+          <td class="num">{{ '{:,}'.format(bucket.quantity) }}</td>
+          <td class="num">{{ bucket.value|money }}</td>
+        </tr>
+      {% else %}
+        <tr><td colspan="3" class="subtle">Nothing approved in this range.</td></tr>
+      {% endfor %}
+
+      <tr class="total-row">
+        <td>All buckets</td>
+        <td class="num">{{ '{:,}'.format(summary.total_quantity) }}</td>
+        <td class="num">{{ summary.total_value|money }}</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<h2>Batches in this range</h2>
+<div class="table-scroll">
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th>
+        <th>Service type</th>
+        <th class="num">Items</th>
+        <th class="num">Value</th>
+        <th class="no-print"></th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for batch in summary.batches %}
+        <tr>
+          <td>{{ batch.date.strftime('%b %-d') }}</td>
+          <td>{{ batch.service_type.name if batch.service_type else '—' }}</td>
+          <td class="num">{{ batch.item_count if batch.item_count else 'counts only' }}</td>
+          <td class="num">{{ batch.total_value|money }}</td>
+          <td class="no-print">
+            <a href="{{ url_for('batches.view_batch', batch_id=batch.id) }}">Open</a>
+          </td>
+        </tr>
+      {% else %}
+        <tr><td colspan="5" class="subtle">No approved batches in this range.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+
+{% endblock %}
