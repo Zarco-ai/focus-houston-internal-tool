@@ -1,14 +1,12 @@
-# FOCUS Houston Metrics Tracker
+# FOCUS Houston Management Tool
 
 **Christopher Zarco · Solutions Engineer (volunteer), FOCUS Houston · August 2026 – present**
 
-A web app that replaced a nonprofit's hand-built spreadsheets with one system
-for recording what it gives to the families it serves, and for producing the
+This is a web app that replaced a nonprofit's workflow from manually entering data into a
+system for recording what it gives to the families it serves, and for producing the
 monthly report its national office asks for.
 
-> This is a public copy of a private production app. People's names are
-> removed, the item catalog uses **made-up prices**, and internal runbooks
-> and client documents are kept private.
+> This is a public copy of a private production app.
 
 ---
 
@@ -18,10 +16,9 @@ FOCUS Houston supports mothers and their children with diapers, formula,
 clothing, classes and case management. Every month it reports its numbers to
 FOCUS North America.
 
-Before this app, staff typed every distribution into Google Sheets by hand:
+Before this app, staff wrote every distribution onto a piece of paper, and then transferred it manually a Google Sheets by hand:
 
-- **The totals were wrong.** Spreadsheet formulas had broken (`#REF!`, a total
-  that skipped a column), and 4 of 9 months didn't reconcile.
+- **The totals were wrong.** Spreadsheet formulas were broken, and 4 of 9 months didn't reconcile.
 - **Reporting took hours.** Each month's report was rebuilt by hand.
 - **Privacy was at risk.** Free-text notes sat next to the numbers.
 
@@ -31,7 +28,7 @@ Before this app, staff typed every distribution into Google Sheets by hand:
 |---|---|
 | **Staff** | Count a distribution on a phone, review it, approve it. A review queue catches anything with no price or category. |
 | **Directors** | A Totals page with every metric the national template asks for, for any month, year or date range. |
-| **Reporting** | One click fills the organization's **own Google Sheet** in its exact format: a new tab per period, the app's totals, never a formula. |
+| **Reporting** | One click fills the organization's **own Google Sheet** in its exact format: a new tab per period and the app's totals. |
 | **Program health** | Client check-ins from a Google Form, an intake timer, and retention, engagement and turnover rates. |
 | **Admins** | Roles, an audit log of every change, backups, and import/export of history. |
 
@@ -56,8 +53,7 @@ flowchart LR
     App -->|Editor on one Sheet| Report[Org's monthly report Sheet]
 ```
 
-- **One source of truth.** Every number on screen, in the CSVs and in the
-  Google Sheet comes from the same functions, so they can't disagree.
+- **One source of truth.** Every number on screen comes from the same functions, so they can't disagree.
 - **Values frozen at approval.** A price change later never rewrites history;
   corrections go through the audit log.
 - **No names stored.** A client is a card number with a check digit, never a
