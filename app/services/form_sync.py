@@ -1,30 +1,3 @@
-"""Bringing Google Form responses in from the form's response Sheet.
-
-The design (PRODUCTION_DESIGN section 9, approved 20 October 2026):
-
-  * Read the Sheet the Form writes to, as a service account that is a
-    VIEWER of that one Sheet, with the read-only Sheets scope. Nothing here
-    can change the form or the Sheet.
-  * Columns are found by their header, from an allowlist. Anything else in
-    the Sheet -- above all an "Email Address" column -- is never read into
-    anything that is stored. Its header is noted on the sync run so someone
-    notices; its values are never touched.
-  * Each response gets a key: sha256 of the submission time and the typed
-    ID. A row whose key is already imported is skipped, so running a sync
-    twice imports nothing twice, and a failed sync simply picks up where it
-    stopped next time.
-  * Each row is saved inside its own savepoint: a row that can't be read is
-    rolled back alone, counted and reported, and the rest still come in.
-    No half-imported row can exist.
-  * One sync at a time: a PostgreSQL advisory lock. Two people opening
-    Totals at the same moment cause one sync, not two.
-  * No scheduler. A sync runs when someone presses Sync now, or when the
-    Responses or Totals page opens and the last attempt is more than a few
-    minutes old.
-
-Matching a response to a mother is app/services/form_review.py's job; the
-sync calls it for every new row.
-"""
 
 import datetime
 import hashlib
@@ -45,38 +18,22 @@ from app.services import card_numbers, clock, form_review
 SCOPES = ("https://www.googleapis.com/auth/spreadsheets.readonly",)
 SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets"
 REQUEST_TIMEOUT_SECONDS = 15
-# What Google names the tab a form writes to ("Form Responses 1", or
-# "Form responses 1" in newer Sheets). Found without regard to case.
 DEFAULT_TAB = "form responses 1"
 
-# Any constant works; it just has to be the same for every sync.
 ADVISORY_LOCK_KEY = 6_242_026
 
 DEFAULT_STALE_MINUTES = 5
 
-# The most new rows one sync imports. Found by the Phase 9 stress test: a
-# first sync of a Sheet with thousands of rows took longer than gunicorn's
-# 30-second request limit, was killed, rolled back, and would have been
-# retried -- and killed -- on every page load, so nothing would ever have
-# come in. 300 rows is a few seconds; the next sync carries on (the import
-# is idempotent, so stopping part-way is safe).
 MAX_NEW_ROWS_PER_SYNC = 300
 
-# Google Sheets counts days from 30 December 1899.
 SHEETS_EPOCH = datetime.datetime(1899, 12, 30)
 
 
 class SyncError(Exception):
-    """The sync can't run at all. The message is short, says what to fix,
-    and never contains participant data."""
-
-
-# --- The columns ------------------------------------------------------------------------
+    pass
 
 
 def _tidy_header(text):
-    """Header text, compared without case, punctuation or extra spaces --
-    a question mark added in the Form shouldn't stop the sync."""
     text = unicodedata.normalize("NFKC", str(text or "")).lower()
     text = re.sub(r"[^a-z0-9]+", " ", text)
     return " ".join(text.split())
@@ -85,17 +42,14 @@ def _tidy_header(text):
 @dataclass(frozen=True)
 class Column:
     field: str
-    titles: tuple            # tidied exact titles accepted
-    prefixes: tuple = ()     # or tidied beginnings, for the long questions
+    titles: tuple
+    prefixes: tuple = ()
     required: bool = False
 
     def matches(self, tidied):
         return tidied in self.titles or any(tidied.startswith(p) for p in self.prefixes)
 
 
-# The allowlist. docs/GOOGLE_FORM_SETUP.md gives the exact question titles;
-# small changes in wording or punctuation are tolerated, a different
-# question is not.
 COLUMNS = (
     Column("timestamp", ("timestamp",), required=True),
     Column("raw_id", ("what s your id", "whats your id", "what is your id", "your id",
@@ -112,8 +66,6 @@ COLUMNS = (
 
 
 def find_columns(headers):
-    """{field: column index}, plus a note of what wasn't found and what
-    won't be read. Raises SyncError if a required column is missing."""
     found, unread = {}, []
     for index, header in enumerate(headers):
         tidied = _tidy_header(header)
@@ -142,13 +94,10 @@ def find_columns(headers):
     return found, ("; ".join(notes)[:500] or None)
 
 
-# --- One row ---------------------------------------------------------------------------
-
-
 @dataclass
 class ParsedRow:
-    submitted_local: datetime.datetime   # naive, the Sheet's local time
-    submitted_at: datetime.datetime      # aware, UTC
+    submitted_local: datetime.datetime
+    submitted_at: datetime.datetime
     raw_id_text: str
     returning: object
     event: str
@@ -164,7 +113,7 @@ class ParsedRow:
 
 
 class RowError(Exception):
-    """One row can't be read. The message names the column, not the value."""
+    pass
 
 
 def _cell(row, columns, name):
@@ -214,7 +163,6 @@ def _score(value):
 
 
 def parse_row(row, columns, zone):
-    """Only the allowlisted cells of one row. Nothing else is looked at."""
     local, utc = _timestamp(_cell(row, columns, "timestamp"), zone)
     return ParsedRow(
         submitted_local=local,
@@ -228,9 +176,6 @@ def parse_row(row, columns, zone):
     )
 
 
-# --- Where the rows come from -----------------------------------------------------------
-
-
 @dataclass
 class SheetData:
     headers: list
@@ -239,11 +184,10 @@ class SheetData:
 
 
 class GoogleSheetSource:
-    """The real Sheet, read with the service account's read-only token."""
 
     def __init__(self, sheet_id, tab, credentials_info):
         self.sheet_id = sheet_id
-        self.tab = tab  # None: find it (choose_tab)
+        self.tab = tab
         self.credentials_info = credentials_info
 
     @property
@@ -289,8 +233,6 @@ class GoogleSheetSource:
 
 
 def choose_tab(titles, wanted=None):
-    """Which tab to read. The setting if given; otherwise the form's
-    responses tab; otherwise the only tab. Never a guess between several."""
     by_lower = {t.lower(): t for t in titles}
     if wanted:
         if wanted.lower() in by_lower:
@@ -306,8 +248,6 @@ def choose_tab(titles, wanted=None):
 
 
 def _google_reason(response):
-    """Google's machine-readable reason for an error, if it gave one. Only
-    the reason code is used -- never the message text."""
     try:
         error = response.json().get("error") or {}
     except ValueError:
@@ -337,8 +277,6 @@ def _raise_for(response, account):
 
 
 def configured_source(config):
-    """The Sheet from the app's settings, or None if the sync isn't set up.
-    The key is read from the environment and never logged or shown."""
     sheet_id = config.get("FORM_SHEET_ID")
     raw_key = config.get("GOOGLE_SERVICE_ACCOUNT_JSON")
     if not sheet_id or not raw_key:
@@ -350,9 +288,6 @@ def configured_source(config):
     if not isinstance(info, dict) or info.get("type") != "service_account":
         raise SyncError("GOOGLE_SERVICE_ACCOUNT_JSON isn't a service account key.")
     return GoogleSheetSource(sheet_id, config.get("FORM_SHEET_TAB"), info)
-
-
-# --- The run ----------------------------------------------------------------------------
 
 
 def last_run():
@@ -369,12 +304,10 @@ def recent_runs(limit=10):
 
 
 def is_stale(minutes=DEFAULT_STALE_MINUTES, now=None):
-    """True if no sync has been attempted in the last `minutes`. Counts
-    failed attempts too, so a broken setup isn't retried on every page."""
     run = last_run()
     now = now or clock.now_utc()
     if run is not None and run.rows_remaining:
-        return True          # a backlog is coming in a few hundred at a time
+        return True
     return run is None or now - run.started_at > datetime.timedelta(minutes=minutes)
 
 
@@ -383,8 +316,6 @@ def _take_lock():
 
 
 def run(source, triggered_by_id=None):
-    """One sync. Returns the SyncRun, or None if another sync holds the lock.
-    Commits: the run's record must survive even when the sync fails."""
     if not _take_lock():
         db.session.rollback()
         return None
@@ -400,16 +331,12 @@ def run(source, triggered_by_id=None):
         try:
             zone = ZoneInfo(data.timezone)
         except (ZoneInfoNotFoundError, ValueError):
-            # Sheet timestamps carry no offset. Guessing the zone would put
-            # every evening response on the wrong day, so refuse instead.
             raise SyncError("Couldn't read the Sheet's time zone (File → Settings in the Sheet).")
         columns, sync.columns_note = find_columns(data.headers)
         _import_rows(sync, data.rows, columns, zone)
     except SyncError as error:
         sync.error = str(error)[:500]
 
-    # Responses that were waiting on a participant who now exists (her
-    # intake was entered after she filled in the form) are matched now.
     form_review.match_waiting_responses()
 
     sync.finished_at = clock.now_utc()
@@ -421,7 +348,7 @@ def _import_rows(sync, rows, columns, zone):
     known = {key for (key,) in db.session.query(FormResponse.source_key)}
     unreadable = []
 
-    for number, row in enumerate(rows, start=2):  # row 1 is the header
+    for number, row in enumerate(rows, start=2):
         if not any(cell not in ("", None) for cell in row):
             continue
         sync.rows_seen += 1
@@ -464,7 +391,5 @@ def _import_rows(sync, rows, columns, zone):
 
     if unreadable:
         shown = ", ".join(unreadable[:5]) + (" …" if len(unreadable) > 5 else "")
-        # Every other row is in. These stay out until the Sheet is fixed;
-        # each sync tries them again, so fixing the cell is all it takes.
         sync.error = (f"{len(unreadable)} row(s) couldn't be imported (fix them in the "
                       f"Sheet and they come in on the next sync): {shown}")[:500]

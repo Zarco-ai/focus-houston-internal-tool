@@ -1,13 +1,3 @@
-"""Signing in, the allowlist, roles, and the audit user.
-
-The tests never talk to Google. Authlib's token exchange is replaced with a
-function that returns the claims Google would have sent -- everything after
-that (the allowlist, the session, the guard) is the real code.
-
-The route-walking tests don't keep a list of URLs: they read every route
-the app has from Flask itself, so a page added next year is covered the day
-it is added.
-"""
 
 import datetime
 import re
@@ -27,11 +17,7 @@ from app.services import audit, batches, clock, users
 HOUSTON = clock.HOUSTON
 
 
-# --- Helpers ---------------------------------------------------------------------
-
-
 def google_says(monkeypatch, email, verified=True):
-    """Pretend Google completed sign-in and vouched for this email."""
     monkeypatch.setattr(
         oauth.google,
         "authorize_access_token",
@@ -44,7 +30,6 @@ def complete_google_sign_in(client):
 
 
 def example_url(rule):
-    """A concrete URL for a route, with placeholder values for its parts."""
     values = {}
     for name in rule.arguments:
         converter = rule._converters.get(name)
@@ -62,12 +47,7 @@ def is_redirect_to_sign_in(response):
     return response.status_code == 302 and response.headers["Location"].endswith("/login")
 
 
-# --- Deny by default ------------------------------------------------------------
-
-
 def test_an_unauthenticated_request_is_redirected_to_login_on_every_route(anonymous_client, seeded_app):
-    """Every route that isn't deliberately public sends an anonymous visitor
-    to sign in -- GET and POST alike, before any page code runs."""
     checked = 0
     for rule, method in every_route(seeded_app):
         if rule.endpoint in PUBLIC_ENDPOINTS:
@@ -75,23 +55,17 @@ def test_an_unauthenticated_request_is_redirected_to_login_on_every_route(anonym
         response = anonymous_client.open(example_url(rule), method=method)
         assert is_redirect_to_sign_in(response), f"{method} {rule.rule} -> {response.status_code}"
         checked += 1
-    assert checked > 30  # the walk really did walk
+    assert checked > 30
 
 
 def test_the_public_list_is_only_sign_in_health_and_static():
-    """Adding to this list is a security decision. If this test fails, the
-    commit that changed PUBLIC_ENDPOINTS should say why."""
     assert PUBLIC_ENDPOINTS == {
         "auth.login", "auth.start", "auth.callback", "health.check", "static",
     }
 
 
 def test_an_unknown_url_tells_an_anonymous_visitor_nothing(anonymous_client):
-    """No 404 for strangers: they can't probe which pages exist."""
     assert is_redirect_to_sign_in(anonymous_client.get("/no-such-page"))
-
-
-# --- Signing in ------------------------------------------------------------------
 
 
 def test_an_allowlisted_google_account_signs_in(anonymous_client, staff_user, monkeypatch):
@@ -114,8 +88,6 @@ def test_a_non_allowlisted_google_account_is_refused(anonymous_client, monkeypat
 
 
 def test_an_unverified_google_email_is_refused_even_if_allowlisted(anonymous_client, staff_user, monkeypatch):
-    """Google's email_verified claim is required. An unverified address
-    could belong to anyone."""
     google_says(monkeypatch, staff_user.email, verified=False)
     assert complete_google_sign_in(anonymous_client).status_code == 403
     assert is_redirect_to_sign_in(anonymous_client.get("/"))
@@ -134,8 +106,6 @@ def test_a_removed_user_cannot_sign_in(anonymous_client, staff_user, monkeypatch
 
 
 def test_signing_in_starts_a_fresh_session(anonymous_client, staff_user, monkeypatch):
-    """Session fixation: nothing put in the session before sign-in survives
-    it."""
     with anonymous_client.session_transaction() as session:
         session["planted"] = "by someone else"
     google_says(monkeypatch, staff_user.email)
@@ -156,8 +126,6 @@ def test_sign_in_is_recorded_in_the_audit_log(anonymous_client, staff_user, monk
 
 
 def test_sign_in_asks_google_for_identity_only(anonymous_client, seeded_app):
-    """openid + email: who you are, nothing else. No access to mail, files or
-    calendar. Checked offline by giving Authlib Google's endpoints directly."""
     oauth.google.server_metadata.update(
         {
             "_loaded_at": time.time(),
@@ -186,9 +154,6 @@ def test_a_failed_google_handshake_sends_you_back_to_sign_in(anonymous_client, m
     assert is_redirect_to_sign_in(complete_google_sign_in(anonymous_client))
 
 
-# --- ADMIN_EMAILS: the first admins, created once ----------------------------------
-
-
 @pytest.fixture
 def with_admin_emails(seeded_app):
     seeded_app.config["ADMIN_EMAILS"] = frozenset({"first.admin@gmail.com"})
@@ -206,8 +171,6 @@ def test_an_admin_email_becomes_an_admin_on_first_sign_in(with_admin_emails, ano
 
 
 def test_a_removed_admin_email_is_never_re_added_by_admin_emails(with_admin_emails, anonymous_client, monkeypatch, admin_user):
-    """Your rule: they can remove themselves, and can't come back on their
-    own. Only another admin can restore them."""
     google_says(monkeypatch, "first.admin@gmail.com")
     complete_google_sign_in(anonymous_client)
     first = users.find_by_email("first.admin@gmail.com")
@@ -218,16 +181,11 @@ def test_a_removed_admin_email_is_never_re_added_by_admin_emails(with_admin_emai
     assert complete_google_sign_in(fresh).status_code == 403
     assert not users.find_by_email("first.admin@gmail.com").active
 
-    # Another admin can restore them.
     users.add_user("first.admin@gmail.com", ROLE_ADMIN)
     assert complete_google_sign_in(with_admin_emails.test_client()).status_code == 302
 
 
-# --- Roles ----------------------------------------------------------------------
-
-
 def test_staff_cannot_open_admin_routes(staff_client, seeded_app):
-    """Enforced on the server, for every admin route, whatever the links say."""
     checked = 0
     for rule, method in every_route(seeded_app):
         if not requires_admin(rule.endpoint):
@@ -262,14 +220,12 @@ def test_staff_see_no_admin_links(staff_client):
 
 
 def test_every_staff_endpoint_exists(app):
-    """A typo in STAFF_ENDPOINTS would quietly lock staff out of a page."""
     assert STAFF_ENDPOINTS <= set(app.view_functions)
 
 
 @pytest.mark.parametrize("path", ["/intake", "/responses", "/batches", "/reports/monthly",
                                   "/totals/export.csv", "/admin/settings"])
 def test_staff_only_count_review_and_see_totals(staff_client, path):
-    """The client's decision, 11 Nov 2026."""
     assert staff_client.get(path).status_code == 403
 
 
@@ -279,9 +235,6 @@ def test_staff_see_the_range_and_metrics_but_not_the_rest_of_totals(staff_client
     for hidden in ("Reports &amp; exports", "By report bucket", "Batches in this range"):
         assert hidden in admin_page and hidden not in staff_page, hidden
     assert 'class="period-form' in staff_page and 'class="report"' in staff_page
-
-
-# --- Taking effect on the very next request ------------------------------------------
 
 
 def test_a_deactivated_user_is_out_on_the_next_request(staff_client, staff_user):
@@ -300,7 +253,6 @@ def test_a_role_change_takes_effect_on_the_next_request(client, admin_user):
 
 
 def test_a_session_older_than_12_hours_is_signed_out(seeded_app, staff_user, sign_in_as):
-    """Absolute, from sign-in -- not from the last click."""
     browser = seeded_app.test_client()
     signed_in = datetime.datetime(2026, 10, 20, 7, 0, tzinfo=HOUSTON)
     with clock.freeze(signed_in):
@@ -310,7 +262,6 @@ def test_a_session_older_than_12_hours_is_signed_out(seeded_app, staff_user, sig
         assert browser.get("/").status_code == 200
     with clock.freeze(signed_in + datetime.timedelta(hours=12, minutes=1)):
         assert is_redirect_to_sign_in(browser.get("/"))
-    # And it stays signed out: the expired session was cleared.
     with clock.freeze(signed_in + datetime.timedelta(hours=1)):
         assert is_redirect_to_sign_in(browser.get("/"))
 
@@ -320,9 +271,6 @@ def test_signing_out_needs_a_post_and_ends_the_session(client):
     response = client.post("/logout")
     assert is_redirect_to_sign_in(response)
     assert is_redirect_to_sign_in(client.get("/"))
-
-
-# --- Users & Access ------------------------------------------------------------------
 
 
 def test_an_admin_can_add_change_and_remove_people(client, admin_user):
@@ -350,7 +298,6 @@ def test_the_last_active_admin_cannot_remove_or_demote_themselves(client, admin_
     with pytest.raises(users.UserError):
         users.set_role(admin_user, ROLE_STAFF)
 
-    # Through the page too: refused with a message, nothing changes.
     client.post(f"/admin/users/{admin_user.id}/remove", data={"confirm": "yes"})
     assert db.session.get(AppUser, admin_user.id).active
     assert client.get("/admin/users").status_code == 200
@@ -388,12 +335,7 @@ def test_the_break_glass_command_restores_an_admin(seeded_app, admin_user):
     assert AuditLog.query.filter_by(action=ACTION_BOOTSTRAP, record_id=director.id).count() == 1
 
 
-# --- The audit log always says who -----------------------------------------------------
-
-
 def test_every_audited_change_records_the_user(client, admin_user):
-    """A run of real changes through the pages: catalog, price, a correction
-    to an approved batch, a user change. Every row names the admin."""
     client.post("/admin/items/new", data={
         "name": "Diapers Size 3", "category": "diapers", "report_bucket": "diapers",
         "used_multiplier": "0.5", "price_entry": "fixed", "unit_price_new": "0.44",
@@ -419,15 +361,11 @@ def test_writing_an_audit_row_with_nobody_signed_in_is_refused(app):
 
 
 def test_the_database_itself_refuses_an_audit_row_with_no_user(app):
-    """Belt and braces: even code that skipped the service can't do it."""
     db.session.add(AuditLog(table_name="item", record_id=1, field="name",
                             old_value="a", new_value="b", action="update", user_id=None))
     with pytest.raises(sa.exc.IntegrityError):
         db.session.commit()
     db.session.rollback()
-
-
-# --- Rate limits ------------------------------------------------------------------------
 
 
 class RateLimitedConfig(TestConfig):
@@ -444,9 +382,6 @@ def test_sign_in_is_rate_limited(make_app, monkeypatch):
         statuses = [browser.get("/login/google").status_code for _ in range(4)]
 
     assert statuses == [302, 302, 302, 429]
-
-
-# --- Health check ---------------------------------------------------------------------------
 
 
 def test_the_health_check_is_public_and_says_only_ok(anonymous_client):

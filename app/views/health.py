@@ -1,11 +1,3 @@
-"""The health check Render polls.
-
-    GET /healthz   200 "ok" if the app is up AND the database answers,
-                   503 otherwise.
-
-Public (Render's checker can't sign in), so it says nothing else: no
-version, no counts, no error detail. The detail goes to the log.
-"""
 
 import logging
 

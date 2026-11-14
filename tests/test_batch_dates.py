@@ -1,6 +1,3 @@
-"""Past-dated batches (decided 2 November 2026): today or earlier, never
-the future. So earlier months' sheets can be entered, and a paper tally
-from a day the app was down goes under the right day."""
 
 import datetime
 

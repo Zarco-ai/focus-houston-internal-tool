@@ -1,10 +1,3 @@
-"""The Google Form sync (Phase 6).
-
-Nothing here talks to Google. FakeSheet stands in for the response Sheet,
-returning what the Sheets API returns: a header row, rows of unformatted
-values (timestamps as Sheets serial numbers, in the Sheet's own time zone),
-and the Sheet's time-zone setting.
-"""
 
 import datetime
 import json
@@ -40,7 +33,6 @@ HEADERS = [
 
 
 def serial(local):
-    """A naive Houston-local datetime as a Sheets serial number."""
     return (local - form_sync.SHEETS_EPOCH).total_seconds() / 86400
 
 
@@ -72,7 +64,6 @@ def cards(seeded_app):
 
 @pytest.fixture
 def known(cards, admin_user):
-    """Three mothers already in the app, on the first three cards."""
     people = [participants.create_participant(code, created_by_id=admin_user.id) for code in cards[:3]]
     db.session.commit()
     return people
@@ -87,11 +78,7 @@ def sync(sheet, user_id=None):
     return run
 
 
-# --- Importing and matching -------------------------------------------------------------
-
-
 def test_a_known_card_number_becomes_a_visit_on_houstons_date(known, cards):
-    # 21:30 in Houston is already the next day in UTC.
     run = sync(FakeSheet([row(at(14, 21, 30), cards[0])]))
 
     assert (run.rows_seen, run.rows_imported, run.error) == (1, 1, None)
@@ -131,8 +118,6 @@ def test_an_edited_answer_keeps_the_version_first_imported(known, cards):
 
 
 def test_an_email_column_is_dropped_and_never_stored(known, cards):
-    """The old staff form collected email addresses (finding F9). Whatever
-    the Sheet has, only the allowlisted columns are read."""
     run = sync(FakeSheet([row(at(14, 10), cards[0], email="someone@example.com"),
                           row(at(14, 11), "12345", email="other@example.com")]))
     db.session.commit()
@@ -205,9 +190,6 @@ def test_a_waiting_response_is_matched_once_her_intake_is_entered(cards, admin_u
     assert ParticipantVisit.query.count() == 1
 
 
-# --- When the Sheet isn't right ------------------------------------------------------------
-
-
 def test_a_missing_id_column_fails_loudly_and_imports_nothing(cards):
     headers = [h for h in HEADERS if h != "What's your ID?"]
     run = sync(FakeSheet([[serial(at(14, 10)), "x", "Yes", "Event", "r", 9, "w"]], headers=headers))
@@ -252,7 +234,6 @@ def test_an_unreadable_row_is_skipped_and_the_rest_come_in(known, cards):
 
 
 def test_a_row_that_fails_to_save_is_rolled_back_alone(known, cards, monkeypatch):
-    """Each row has its own savepoint: no half-imported row can exist."""
     real = form_review.match_on_import
 
     def explode_on_second(response):
@@ -280,11 +261,7 @@ def test_long_answers_are_cut_to_the_limit(known, cards):
     assert len(FormResponse.query.one().reason) == 300
 
 
-# --- One sync at a time ------------------------------------------------------------------------
-
-
 def test_a_second_sync_waits_for_the_first(seeded_app):
-    """Two people opening the page at once cause one sync, not two."""
     other = db.engine.connect()
     transaction = other.begin()
     other.execute(sa.text("SELECT pg_advisory_xact_lock(:k)"), {"k": form_sync.ADVISORY_LOCK_KEY})
@@ -305,9 +282,6 @@ def test_a_sync_is_stale_after_five_minutes(seeded_app):
         assert not form_sync.is_stale(5)
     with clock.freeze(datetime.datetime(2026, 10, 14, 10, 6, tzinfo=HOUSTON)):
         assert form_sync.is_stale(5)
-
-
-# --- A person's decisions ------------------------------------------------------------------------
 
 
 def waiting(card):
@@ -357,9 +331,6 @@ def test_a_decided_response_cant_be_decided_again(known, cards):
         form_review.match(response, cards[0])
 
 
-# --- Event names ----------------------------------------------------------------------------------
-
-
 def test_mapping_an_event_name_relabels_past_visits(known, cards):
     sync(FakeSheet([row(at(14, 10), cards[0], event="Diaper day"),
                     row(at(14, 11), cards[1], event=" diaper  DAY ")]))
@@ -372,12 +343,8 @@ def test_mapping_an_event_name_relabels_past_visits(known, cards):
 
     assert {v.service_type_id for v in ParticipantVisit.query} == {diapers.id}
     assert form_review.unmapped_label_count() == 0
-    # A later response with that answer is labelled as it comes in.
     sync(FakeSheet([row(at(15, 10), cards[2], event="Diaper Day")]))
     assert ParticipantVisit.query.filter_by(service_type_id=diapers.id).count() == 3
-
-
-# --- Merging two numbers ----------------------------------------------------------------------------
 
 
 def test_merging_keeps_visits_and_can_be_undone(known, cards):
@@ -394,7 +361,6 @@ def test_merges_are_one_level_deep(known):
     form_review.merge(a.code, b.code)
     with pytest.raises(form_review.ReviewError, match="itself been merged"):
         form_review.merge(c.code, a.code)
-    # Retiring b re-points a, so nothing is two levels deep.
     form_review.merge(b.code, c.code)
     assert a.merged_into_id == c.id and b.merged_into_id == c.id
 
@@ -404,9 +370,6 @@ def test_a_bad_merge_is_refused(known, pair):
     codes = {"same": known[0].code, "known": known[1].code, "12345": "12345"}
     with pytest.raises(form_review.ReviewError):
         form_review.merge(codes[pair[0]], codes[pair[1]])
-
-
-# --- Configuration --------------------------------------------------------------------------------
 
 
 def test_without_settings_the_sync_is_simply_off():
@@ -421,8 +384,6 @@ def test_a_bad_key_is_explained_without_echoing_it(key):
 
 
 def test_the_real_source_reads_unformatted_values_read_only(monkeypatch):
-    """GoogleSheetSource, with Google's library replaced: it asks for the
-    read-only scope, serial-number dates and the time zone."""
     calls = {}
 
     class FakeCredentials:
@@ -459,13 +420,11 @@ def test_the_real_source_reads_unformatted_values_read_only(monkeypatch):
 
     assert calls["scopes"] == form_sync.SCOPES == ("https://www.googleapis.com/auth/spreadsheets.readonly",)
     values_url, values_call = [(u, p) for u, p in calls["urls"] if "/values/" in u][0]
-    assert values_url.endswith("/values/Form%20responses%201")  # found, not configured
+    assert values_url.endswith("/values/Form%20responses%201")
     assert values_call["valueRenderOption"] == "UNFORMATTED_VALUE"
     assert values_call["dateTimeRenderOption"] == "SERIAL_NUMBER"
     assert (data.headers, data.rows, data.timezone) == (
         ["Timestamp", "What's your ID?"], [[46000.5, 12345]], "America/Chicago")
-
-
 
 
 def test_every_decision_is_audited_with_its_before_and_after(known, cards, admin_user):
@@ -480,13 +439,6 @@ def test_every_decision_is_audited_with_its_before_and_after(known, cards, admin
     assert [(r.old_value, r.new_value) for r in rows] == [
         ("waiting", "matched"), ("waiting", "created"), ("auto", "discarded")]
     assert {r.user_id for r in rows} == {admin_user.id}
-
-
-# --- Found on the first real setup (28 Oct 2026) -------------------------------------------
-#
-# The first real sync said "403: not shared, wrong ID, or wrong tab" -- three
-# causes in one sentence, one of them impossible for a 403. Each cause now
-# gets its own message, and the tab is found without a setting.
 
 
 @pytest.mark.parametrize("titles, wanted, chosen", [
@@ -529,21 +481,13 @@ def test_each_google_error_says_what_to_fix(response, message):
     assert "not shown" not in str(raised.value)
 
 
-# --- A big first sync (Phase 9 stress test) ------------------------------------------------------
-#
-# Found by the stress test: a first sync of thousands of rows outran
-# gunicorn's 30-second limit, was killed and rolled back, and would have been
-# retried and killed on every page load. A sync now takes at most
-# MAX_NEW_ROWS_PER_SYNC new rows; the next one carries on.
-
-
 def test_a_big_backlog_comes_in_a_few_hundred_rows_at_a_time(cards, monkeypatch):
     monkeypatch.setattr(form_sync, "MAX_NEW_ROWS_PER_SYNC", 4)
     sheet = FakeSheet([row(at(14, 10, minute), "12345") for minute in range(10)])
 
     first = sync(sheet)
     assert (first.rows_imported, first.rows_remaining) == (4, 6)
-    assert form_sync.is_stale(5)                       # carry on at once, not in 5 minutes
+    assert form_sync.is_stale(5)
 
     second = sync(sheet)
     third = sync(sheet)
@@ -553,7 +497,6 @@ def test_a_big_backlog_comes_in_a_few_hundred_rows_at_a_time(cards, monkeypatch)
 
 
 def test_the_review_queue_asks_the_database_a_few_times_not_per_response(known, cards):
-    """903 responses took 10 seconds when each asked its own questions."""
     rows = [row(at(14, 9, minute), "12345") for minute in range(0, 50, 3)]
     sync(FakeSheet(rows))
     statements = []

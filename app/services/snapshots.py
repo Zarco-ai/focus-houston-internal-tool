@@ -1,11 +1,3 @@
-"""Filing a report, and "changed since filed".
-
-The payload is the report's numbers as the screen shows them ("$1,240.80",
-"110.0%"), so comparing two payloads is comparing what a person would have
-read. The hash covers the numbers and the batch rows only -- not the
-labels -- so renaming a row in Settings doesn't make every filed report
-look changed.
-"""
 
 import datetime
 import hashlib
@@ -65,8 +57,6 @@ def build(kind, year, month=None):
 
 
 def fingerprint(payload):
-    """sha256 of the numbers, in a fixed order, so the same report always
-    gives the same hash."""
     hashed = {"values": payload["values"], "batches": payload["batches"]}
     text = json.dumps(hashed, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
@@ -99,11 +89,10 @@ def all_snapshots(limit=100):
 class Comparison:
     snapshot: ReportSnapshot
     changed: bool
-    differences: list   # (label, as filed, now)
+    differences: list
 
 
 def compare(snapshot):
-    """Recompute the same report now and compare. Nothing is written."""
     if snapshot.kind == KIND_MONTHLY:
         _, _, live = build(KIND_MONTHLY, snapshot.period_start.year, snapshot.period_start.month)
     else:

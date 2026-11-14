@@ -1,19 +1,7 @@
-"""participants, card numbers, intake timer and survey
-
-New tables only (PRODUCTION_DESIGN 7.2-7.4); nothing existing changes.
-participant has no name column, by design. intake_session has a partial
-unique index: one running or paused timer per person (Phase 0 answer 3).
-
-Revision ID: c1d88075704a
-Revises: bbdded7d15ce
-Create Date: 2026-10-27 22:28:11.146954
-
-"""
 from alembic import op
 import sqlalchemy as sa
 
 
-# revision identifiers, used by Alembic.
 revision = 'c1d88075704a'
 down_revision = 'bbdded7d15ce'
 branch_labels = None

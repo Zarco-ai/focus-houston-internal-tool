@@ -1,9 +1,3 @@
-"""The Intake page: the timer, the survey, and anything waiting on either.
-
-Every button is a POST that changes the session row on the server; the page
-only ever displays it. The banner that follows the program director around the app
-while a timer runs comes from the same row (intake_banner below).
-"""
 
 from flask import Blueprint, abort, flash, g, redirect, render_template, request, url_for
 
@@ -17,10 +11,7 @@ intake_bp = Blueprint("intake", __name__)
 
 @intake_bp.app_context_processor
 def intake_banner():
-    """The signed-in person's running or paused timer, for the banner on
-    every page."""
     user = g.get("user")
-    # Intake is admin-only (app/auth.py): staff never see the banner.
     if user is None or not user.is_admin or request.endpoint in (None, "static"):
         return {"intake_banner": None}
     session = intake.active_session_for(user.id)
@@ -37,8 +28,6 @@ def intake_banner():
 def page():
     unfinished = intake.unfinished_sessions_for(g.user.id)
     current = _chosen_session(unfinished)
-    # Answers typed before a timer button was pressed come back from the
-    # server, on this device or any other.
     form = intake.draft_answers(current) if current is not None and current.survey_draft else request.args
     return _render(current, unfinished, form)
 
@@ -67,8 +56,6 @@ def _render(current, unfinished, form, status=200):
 
 
 def _chosen_session(unfinished):
-    """?session=ID picks one of this person's unfinished intakes; otherwise
-    the running one, else the newest."""
     wanted = request.args.get("session", type=int)
     if wanted is not None:
         for session in unfinished:
@@ -81,7 +68,6 @@ def _chosen_session(unfinished):
 
 
 def _session_or_403(session_id):
-    """Only the person who started an intake works it -- or an admin."""
     session = db.get_or_404(IntakeSession, session_id)
     if session.started_by_id != g.user.id and not g.user.is_admin:
         abort(403)
@@ -109,13 +95,11 @@ def start():
 def _timer_action(name, action, message=None):
     def view(session_id):
         session = _session_or_403(session_id)
-        # The survey's boxes come along with every timer button, so pressing
-        # one never loses what was typed.
         intake.keep_draft(session, request.form)
         try:
             action(session)
         except intake.IntakeError as error:
-            db.session.commit()  # the answers are still worth keeping
+            db.session.commit()
             flash(str(error), "error")
             return _back(session)
         db.session.commit()
@@ -136,7 +120,6 @@ _timer_action("confirm", intake.confirm, "Time confirmed.")
 
 @intake_bp.route("/intake/<int:session_id>/time", methods=["POST"])
 def correct_time(session_id):
-    """Set or clear the slider on a stopped intake (a flagged one, usually)."""
     session = _session_or_403(session_id)
     try:
         intake.set_slider(session, request.form.get("slider_minutes"))
@@ -150,13 +133,12 @@ def correct_time(session_id):
 
 @intake_bp.route("/intake/<int:session_id>/batch", methods=["POST"])
 def start_batch(session_id):
-    """A batch for the goods given at this intake, linked to it."""
     session = _session_or_403(session_id)
     intake.keep_draft(session, request.form)
     try:
         batch = intake.start_batch(session)
     except intake.IntakeError as error:
-        db.session.commit()  # the answers are still worth keeping
+        db.session.commit()
         flash(str(error), "error")
         return _back(session)
     db.session.commit()
@@ -196,8 +178,6 @@ def save_survey():
 
 
 def _render_with_answers(session):
-    """The page again with what was typed still in the boxes, so one wrong
-    card number doesn't cost the whole conversation."""
     unfinished = intake.unfinished_sessions_for(g.user.id)
     current = session if session is not None and session.status != "discarded" else (
         unfinished[0] if unfinished else None)

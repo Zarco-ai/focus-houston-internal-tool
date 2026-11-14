@@ -1,18 +1,7 @@
-"""google form responses, event mapping, sync runs
-
-New tables only (PRODUCTION_DESIGN 7.5); nothing existing changes.
-form_response has no email column: the sync reads only allowlisted columns.
-
-Revision ID: 9111fde27afd
-Revises: 99bb93236555
-Create Date: 2026-10-28 13:31:20.536677
-
-"""
 from alembic import op
 import sqlalchemy as sa
 
 
-# revision identifiers, used by Alembic.
 revision = '9111fde27afd'
 down_revision = '99bb93236555'
 branch_labels = None
@@ -70,7 +59,6 @@ def upgrade():
         batch_op.create_index(batch_op.f('ix_form_response_decision'), ['decision'], unique=False)
         batch_op.create_index(batch_op.f('ix_form_response_submitted_at'), ['submitted_at'], unique=False)
         batch_op.create_index(batch_op.f('ix_form_response_submitted_local_date'), ['submitted_local_date'], unique=False)
-
 
 
 def downgrade():

@@ -1,41 +1,3 @@
-"""Importing earlier months from the program director's sheets, as recorded.
-
-A "focus-history" file (tools/history/build_2026.py) has one entry per
-session row of the sheet: its date, service text, note, attendance, and
-item rows by category. Decided 2 November 2026: import AS RECORDED. Every
-count and dollar lands exactly as the sheet had it; the app's own rules
-decide which report row it feeds (formula is Food GIK, bus passes are
-transportation, Non-Food is goods + diapers). Nothing is guessed:
-
-  * a row with a count and $0.00 goes in at $0.00 -> the review queue
-    asks for its value;
-  * a row with no category (car seat, toys, goods on the session row) goes
-    in as a custom item -> the review queue asks for its category;
-  * a value with no count goes in as a custom item of 1 -> the same.
-
-The sheet records categories, not items, so each category becomes one
-hidden catalog item ("Diapers (2026 sheet)", ...), category sheet_2026,
-inactive so it never appears on the counting screen. To keep every dollar
-exact, a row whose value doesn't divide evenly into its count is stored as
-two lines (count-1 at the rounded price, 1 at the remainder).
-
-The hidden category items are created (and saved) first; they're harmless
-and reused if an import is run again. The sessions themselves go in all at
-once: a file that fails part-way leaves no sessions behind.
-
-One import per file: the file's sha256 is remembered, so loading it twice
-changes nothing. A file whose dates overlap sessions already in the app is
-refused too, so the sheets and an export of them can't both go in. Every
-session is audited as an import by the person who ran it. No card numbers
-are in the sheets, so no Program Health numbers come from this.
-
-Version 2 is an EXPORT (export_document): every approved session as it
-stands now, after the program director's review-queue work, so it can be kept
-outside the app and loaded into another copy (staging's free database
-expires; production starts empty). Lines come back exactly: the same
-item, price, value and bucket, and a line still waiting in the review
-queue is still waiting.
-"""
 
 import datetime
 import hashlib
@@ -66,7 +28,6 @@ EXPORT_VERSION = 2
 HISTORY_CATEGORY = "sheet_2026"
 CENT = Decimal("0.01")
 
-# kind -> (item name, report bucket, display group)
 KINDS = {
     "diapers": ("Diapers (2026 sheet)", BUCKET_DIAPERS, None),
     "wipes": ("Wipes (2026 sheet)", BUCKET_HYGIENE, BUCKET_DIAPERS),
@@ -81,8 +42,6 @@ KINDS = {
 }
 UNCATEGORIZED = "uncategorized"
 
-# The sheet's service text -> the app's service types. Anything else is
-# "Other event"; her wording is kept in the batch note either way.
 SERVICE_RULES = (
     ("intake", "Intake"),
     ("esl", "ESL Class"),
@@ -98,7 +57,7 @@ OTHER_EVENT = "Other event"
 
 
 class HistoryError(Exception):
-    """The file can't be imported. The message says why."""
+    pass
 
 
 def fingerprint(text):
@@ -127,7 +86,6 @@ def _service_type(text, cache):
 
 
 def _items():
-    """The hidden category items, created on first import."""
     found = {}
     for kind, (name, bucket, group) in KINDS.items():
         item = catalog.find_item(name, HISTORY_CATEGORY)
@@ -141,7 +99,6 @@ def _items():
 
 
 def _split(quantity, value):
-    """[(quantity, unit price)] whose values add up to exactly `value`."""
     if quantity <= 0:
         raise HistoryError("A line needs a count of at least 1.")
     price = (value / quantity).quantize(CENT, ROUND_HALF_UP)
@@ -181,7 +138,6 @@ def read(text):
 
 
 def check(document):
-    """Every entry, before anything is written: a bad file changes nothing."""
     if document.get("format_version") == EXPORT_VERSION:
         return _check_export(document)
     today = clock.local_today()
@@ -203,8 +159,6 @@ def check(document):
 
 
 def import_history(text):
-    """Load a history file, all or nothing. Returns a summary. Refuses the
-    same file twice."""
     sha = fingerprint(text)
     if already_imported(sha):
         raise HistoryError("This file has already been imported. Nothing was changed.")
@@ -268,9 +222,6 @@ def _write(document):
     return summary
 
 
-# --- Exports (format version 2) ----------------------------------------------
-
-
 def _money_text(value):
     return None if value is None else str(value)
 
@@ -288,9 +239,6 @@ def _item_entry(item):
 
 
 def export_document():
-    """Every approved session as it stands now, for safe keeping and for
-    loading into another copy of the app. Drafts aren't included: they
-    aren't in any report yet."""
     items, entries = {}, []
     sessions = (Batch.query.filter_by(status=STATUS_COMMITTED)
                 .order_by(Batch.date, Batch.id).all())
@@ -361,8 +309,6 @@ def _check_export(document):
 
 
 def _export_items(document):
-    """The file's items, matched by name and category; any the catalog
-    doesn't have (one made while sorting the review queue) is added."""
     found = {}
     for entry in document.get("items", []):
         item = catalog.find_item(entry["name"], entry["category"])
@@ -423,7 +369,6 @@ def _write_export(document):
         if counts:
             batches.set_attendance(batch, counts)
         batches.commit_batch(batch, commit=False)
-        # Exactly as exported: what was still waiting is still waiting.
         for line, data in restored:
             line.needs_review = bool(data.get("needs_review"))
             line.reviewed_at = _parse_time(data.get("reviewed_at"))
@@ -441,4 +386,3 @@ def _new_service_type(name):
     db.session.add(found)
     db.session.flush()
     return found
-

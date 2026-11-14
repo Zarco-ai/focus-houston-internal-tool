@@ -1,10 +1,3 @@
-"""The screens themselves: every page loads, and every form validates its
-input.
-
-These are deliberately shallow. They prove the pages render and that bad input
-gets a readable message instead of a stack trace -- the two things most likely
-to embarrass anyone during a demo.
-"""
 
 import datetime
 from decimal import Decimal
@@ -22,9 +15,6 @@ def start_batch(client):
 
 def item_id(name, category):
     return catalog.find_item(name, category).id
-
-
-# --- Every page loads -------------------------------------------------------
 
 
 def test_every_page_loads(client, seeded_app):
@@ -59,7 +49,6 @@ def test_the_entry_screen_shows_every_active_item(client, seeded_app):
 
 
 def test_repeated_names_are_shown_with_their_category(client, seeded_app):
-    """The Center Director must be able to tell a $72 adult coat from an $18 infant one."""
     batch_id = start_batch(client)
     page = client.get(f"/batch/{batch_id}").get_data(as_text=True)
 
@@ -74,10 +63,7 @@ def test_manual_items_show_their_note_as_help_text(client, seeded_app):
 
     assert "price required" in page
     assert "confirm price" in page
-    assert "too many stroller types" in page  # the Stroller note
-
-
-# --- The counting API -------------------------------------------------------
+    assert "too many stroller types" in page
 
 
 def test_the_plus_button_saves_and_returns_the_new_value(client, seeded_app):
@@ -134,8 +120,6 @@ def test_the_api_survives_a_junk_quantity(client, seeded_app):
 
 
 def test_counting_the_same_item_new_then_used_keeps_both(client, seeded_app):
-    """A bug found in testing: clicking + on a new Bottles, then adding a used one,
-    used to overwrite the first."""
     batch_id = start_batch(client)
     bottles = item_id("Bottles", "baby_essentials")
 
@@ -150,9 +134,9 @@ def test_counting_the_same_item_new_then_used_keeps_both(client, seeded_app):
     body = response.get_json()
 
     assert body["line"]["condition"] == "used"
-    assert body["line"]["value"] == "4.25"  # $8.50 x 0.50
+    assert body["line"]["value"] == "4.25"
     assert body["batch"]["item_count"] == 2
-    assert body["batch"]["total_value"] == "12.75"  # 8.50 + 4.25
+    assert body["batch"]["total_value"] == "12.75"
 
     batch = db.session.get(Batch, batch_id)
     assert len(batch.active_lines) == 2
@@ -189,13 +173,11 @@ def test_a_manual_item_keeps_a_separate_price_per_condition(client, seeded_app):
               "unit_price": "40"},
     )
 
-    assert response.get_json()["line"]["value"] == "20.00"  # 40 x 0.50
+    assert response.get_json()["line"]["value"] == "20.00"
     assert response.get_json()["batch"]["total_value"] == "320.00"
 
 
 def test_two_of_the_same_item_at_two_prices_through_the_screen(client, seeded_app):
-    """A second bug found in testing: a $40 stroller and a $300 stroller in one
-    batch."""
     batch_id = start_batch(client)
     stroller = item_id("Stroller", "baby_mom_items")
 
@@ -228,7 +210,6 @@ def test_the_add_another_price_button_only_shows_on_manual_items(
     batch_id = start_batch(client)
     page = client.get(f"/batch/{batch_id}").get_data(as_text=True)
 
-    # One button per manual-price item, and none for the fixed-price ones.
     manual_count = len(catalog.items_needing_a_price())
     assert page.count("Add another at a different price") == manual_count
 
@@ -305,7 +286,6 @@ def test_the_custom_item_form_defaults_the_price_to_zero(client, seeded_app):
 
 
 def test_a_manual_item_reports_that_it_needs_a_price(client, seeded_app):
-    """The row says so, and the batch says so -- as a warning, not a blocker."""
     batch_id = start_batch(client)
     response = client.post(
         f"/api/batch/{batch_id}/line",
@@ -327,9 +307,6 @@ def test_a_junk_price_is_ignored_rather_than_crashing(client, seeded_app):
     )
     assert response.status_code == 200
     assert response.get_json()["line"]["needs_price"] is True
-
-
-# --- Approving through the web --------------------------------------------
 
 
 def test_approving_without_a_service_type_is_refused_with_a_message(
@@ -377,9 +354,6 @@ def test_the_full_happy_path(client, seeded_app):
 def test_a_batch_holding_an_unpriced_item_can_be_approved_and_priced_later(
     client, seeded_app
 ):
-    """The whole reported flow, end to end: count something whose price is
-    unknown, approve anyway, start the next batch, and put the value on the
-    first one afterwards."""
     batch_id = start_batch(client)
 
     client.post(
@@ -391,7 +365,6 @@ def test_a_batch_holding_an_unpriced_item_can_be_approved_and_priced_later(
         data={"service_type_id": ServiceType.query.first().id},
     )
 
-    # The review screen offers Approve rather than disabling it.
     review_page = client.get(f"/batch/{batch_id}/review").get_data(as_text=True)
     assert "You can approve this now" in review_page
     assert "btn-big\" disabled" not in review_page
@@ -405,11 +378,9 @@ def test_a_batch_holding_an_unpriced_item_can_be_approved_and_priced_later(
     flagged = batch.flagged_lines
     assert len(flagged) == 1
 
-    # Counting again starts a fresh batch, not the one with the flagged line.
     next_id = start_batch(client)
     assert next_id != batch_id
 
-    # And the price typed in the queue lands on the batch it was counted in.
     client.post(
         f"/review-queue/{flagged[0].id}/resolve",
         data={"unit_price": "450"},
@@ -437,22 +408,17 @@ def test_the_review_queue_asks_for_a_price_not_a_catalog_match(client, seeded_ap
     page = client.get("/review-queue").get_data(as_text=True)
 
     assert "Waiting for a price" in page
-    # Its category is shown, because Stroller is not the only thing it could be.
     assert "Stroller" in page and "Baby &amp; Mom" in page
-    # And the note explaining why it has no price on file.
     assert "too many stroller types" in page
 
 
 def test_a_new_batch_can_be_started_while_another_is_unfinished(client, seeded_app):
-    """An open batch -- including one holding an item that needs a price --
-    must never capture the next session's counting."""
     open_id = start_batch(client)
     client.post(
         f"/api/batch/{open_id}/line",
         json={"item_id": item_id("Stroller", "baby_mom_items"), "quantity": 1},
     )
 
-    # Resuming still picks the unfinished batch up, and the home screen says so.
     assert start_batch(client) == open_id
     home = client.get("/").get_data(as_text=True)
     assert "Keep counting" in home
@@ -486,9 +452,6 @@ def test_per_mother_mode_opens_a_new_batch_after_approving(client, seeded_app):
     assert f"/batch/{batch_id}" != next_url
     assert "/batch/" in next_url
     assert client.get(next_url).status_code == 200
-
-
-# --- Forms validate ---------------------------------------------------------
 
 
 def test_a_custom_item_without_a_name_gets_a_message(client, seeded_app):
@@ -530,7 +493,6 @@ def test_a_duplicate_item_gets_a_message(client, seeded_app):
 
 
 def test_the_center_director_can_add_a_diaper_through_the_ui(client, seeded_app):
-    """If she has to call the developer to add a diaper, the system has failed."""
     client.post(
         "/admin/items/new",
         data={
@@ -569,13 +531,6 @@ def test_a_missing_batch_gives_a_404_not_a_crash(client, seeded_app):
     assert client.get("/batches/99999").status_code == 404
 
 
-# --- The service type dropdown ----------------------------------------------
-#
-# The same endpoint serves the dropdown on the counting screen and the one on the
-# review screen, and every option on both of them has to land her back on the
-# page she was already looking at.
-
-
 def service_type_id():
     return ServiceType.query.first().id
 
@@ -597,8 +552,6 @@ def test_setting_the_service_type_while_counting_stays_on_the_counting_page(
 def test_setting_the_service_type_while_reviewing_stays_on_the_review_page(
     client, seeded_app
 ):
-    """She got to the review screen, saw 'Pick a service type', and picked one.
-    Throwing her back to the counting screen to start again is not the answer."""
     batch_id = start_batch(client)
 
     response = client.post(
@@ -614,8 +567,6 @@ def test_setting_the_service_type_while_reviewing_stays_on_the_review_page(
 def test_the_review_page_dropdown_asks_to_come_back_to_the_review_page(
     client, seeded_app
 ):
-    """The redirect above only happens because the form says so. If this input
-    goes missing the dropdown silently starts navigating away again."""
     batch_id = start_batch(client)
     page = client.get(f"/batch/{batch_id}/review").get_data(as_text=True)
 
@@ -625,9 +576,6 @@ def test_the_review_page_dropdown_asks_to_come_back_to_the_review_page(
 def test_the_blank_service_type_option_on_the_counting_page_is_a_page(
     client, seeded_app
 ):
-    """Picking 'Service type…' used to answer 415 Unsupported Media Type,
-    because an empty form value sent the view looking for JSON that was never
-    there."""
     batch_id = start_batch(client)
     client.post(
         f"/batch/{batch_id}/service-type",
@@ -646,8 +594,6 @@ def test_the_blank_service_type_option_on_the_counting_page_is_a_page(
 
 
 def test_the_not_set_option_on_the_review_page_is_a_page(client, seeded_app):
-    """Same bug, same endpoint, other screen: 'Not set' has to come back as the
-    review page."""
     batch_id = start_batch(client)
     client.post(
         f"/batch/{batch_id}/service-type",
@@ -696,8 +642,6 @@ def test_a_service_type_that_does_not_exist_is_refused_with_a_message(
 
 
 def test_an_approved_batch_cannot_have_its_service_type_cleared(client, seeded_app):
-    """A batch could never have been approved without one, and the monthly report
-    reads this field, so 'Not set' is not an option once it is approved."""
     batch_id = start_batch(client)
     client.post(
         f"/api/batch/{batch_id}/line",
@@ -718,8 +662,6 @@ def test_an_approved_batch_cannot_have_its_service_type_cleared(client, seeded_a
     assert b"has to keep a service type" in page.data
     assert db.session.get(Batch, batch_id).service_type_id == service_type_id()
 
-    # And the dropdown does not offer an option that is only going to be
-    # refused.
     review_page = client.get(f"/batch/{batch_id}/review").get_data(as_text=True)
     assert ">Not set<" not in review_page
 
@@ -745,12 +687,8 @@ def test_changing_the_service_type_on_an_approved_batch_is_audited(client, seede
 
     history = audit.history_for("batch", batch_id)
     assert [entry.field for entry in history] == ["service_type_id"]
-    # Names, not row ids -- nobody reading the log knows what a 3 is.
     assert history[0].old_value == first.name
     assert history[0].new_value == second.name
-
-
-# --- A $0 line always ends up in the review queue ----------------------------
 
 
 def approved_batch_with_an_unpriced_stroller(client):
@@ -770,8 +708,6 @@ def approved_batch_with_an_unpriced_stroller(client):
 def test_a_price_taken_back_to_zero_on_the_review_page_returns_to_the_queue(
     client, seeded_app
 ):
-    """The reported bug, through the screens: price it in the queue, take it back
-    to $0 on the review screen, and it has to be waiting in the queue again."""
     batch_id = approved_batch_with_an_unpriced_stroller(client)
     line_id = db.session.get(Batch, batch_id).flagged_lines[0].id
 
@@ -824,8 +760,6 @@ def test_an_approved_batch_with_a_zero_value_item_is_flagged_on_the_home_screen(
 
 
 def test_an_approved_batch_worth_what_it_says_is_not_flagged(client, seeded_app):
-    """The flag is about a $0 value and nothing else. A batch where everything
-    has a price does not get one."""
     batch_id = start_batch(client)
     client.post(
         f"/api/batch/{batch_id}/line",
@@ -858,8 +792,6 @@ def test_the_home_flag_clears_once_the_value_is_typed(client, seeded_app):
 def test_a_custom_line_with_a_real_price_does_not_flag_the_home_screen(
     client, seeded_app
 ):
-    """It is in the review queue -- it needs a category -- but it is not worth
-    $0, and the home screen flag is only ever about the money."""
     batch_id = start_batch(client)
     client.post(
         f"/batch/{batch_id}/custom-item",
@@ -878,18 +810,13 @@ def test_a_custom_line_with_a_real_price_does_not_flag_the_home_screen(
     assert "Needs Review" not in page
 
 
-# --- The privacy boundary ---------------------------------------------------
-
-
 def test_no_screen_asks_for_a_name_of_a_person(client, seeded_app):
-    """Attendance is counts only. This checks the forms do not drift."""
     batch_id = start_batch(client)
 
     review_page = client.get(f"/batch/{batch_id}/review").get_data(as_text=True)
 
     assert 'name="individuals_served"' in review_page
     assert 'name="children_served"' in review_page
-    # No field that invites a person's name.
     for forbidden in ["client_name", "mother_name", "recipient", "patient"]:
         assert forbidden not in review_page
 
@@ -897,8 +824,6 @@ def test_no_screen_asks_for_a_name_of_a_person(client, seeded_app):
 def test_the_attendance_table_has_no_name_column(seeded_app):
     from app.models import Attendance
 
-    # Phase 4 added the per-event figures from the funder template. Every one
-    # is a number; a new column here has to be added to this list on purpose.
     columns = {column.name for column in Attendance.__table__.columns}
     assert columns == {
         "id",

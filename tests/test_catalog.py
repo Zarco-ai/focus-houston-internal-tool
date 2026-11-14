@@ -1,4 +1,3 @@
-"""The catalog: uniqueness, item management, and price history."""
 
 import datetime
 from decimal import Decimal
@@ -12,12 +11,7 @@ from app.services import catalog
 from app.services import clock
 
 
-# --- (name, category) uniqueness -------------------------------------------
-
-
 def test_three_different_pants_coexist_at_three_different_prices(seeded_app):
-    """The single most important thing about this catalog. Uniqueness is
-    (name, category), not name."""
     adult = catalog.find_item("Pants", "clothing_adult")
     children = catalog.find_item("Pants", "clothing_children")
     infant = catalog.find_item("Pants", "clothing_infant")
@@ -32,8 +26,6 @@ def test_the_repeated_names_all_exist_in_all_three_clothing_categories(seeded_ap
     for name in ["Pants", "Coat", "Socks", "Shoes", "Belt", "Light Jacket"]:
         found = Item.query.filter_by(name=name).all()
         categories = {item.category for item in found}
-        # Infant has "Top / Onesie" rather than "Shirt / Top", and no Socks,
-        # Underwear or Belt -- so check the ones that do repeat.
         assert len(found) >= 2, f"{name} should repeat across categories"
         assert len(categories) == len(found), f"{name} duplicated inside a category"
 
@@ -90,12 +82,7 @@ def test_the_same_name_in_a_different_category_is_allowed(seeded_app):
     )
 
 
-# --- The Center Director manages items herself ---------------------------------------
-
-
 def test_a_diaper_can_be_added_with_no_schema_change(seeded_app):
-    """The whole point. If she has to call the developer to add a diaper, the
-    system has failed."""
     item = catalog.create_item(
         name="Diapers Size 3",
         category="diapers",
@@ -176,9 +163,6 @@ def test_deactivating_hides_an_item_without_deleting_it(seeded_app):
     assert coat in catalog.all_items()
 
 
-# --- Price history ----------------------------------------------------------
-
-
 def test_changing_a_price_adds_a_row_and_keeps_the_old_one(seeded_app):
     coat = catalog.find_item("Coat", "clothing_adult")
     assert len(coat.prices) == 1
@@ -199,9 +183,6 @@ def test_a_price_dated_in_the_future_does_not_apply_yet(seeded_app):
     assert coat.current_price(on_date=tomorrow) == Decimal("70.00")
 
 
-# --- The "Needs a price" list ----------------------------------------------
-
-
 def test_needs_a_price_lists_every_manual_item(seeded_app):
     needing = catalog.items_needing_a_price()
 
@@ -211,7 +192,6 @@ def test_needs_a_price_lists_every_manual_item(seeded_app):
     assert "Small Rideable Toy Cars" in names
     assert all(item.price_entry == "manual" for item in needing)
 
-    # Items with a trustworthy price are not on the list.
     assert "Coat" not in names
 
 
@@ -226,7 +206,6 @@ def test_the_needs_a_price_list_shrinks_when_a_price_is_supplied(seeded_app):
 
 
 def test_manual_items_keep_the_note_explaining_why(seeded_app):
-    """The note is what tells The Center Director what to confirm."""
     for item in catalog.items_needing_a_price():
         assert item.note, f"{item.display_name} has no note explaining why"
 
@@ -234,15 +213,6 @@ def test_manual_items_keep_the_note_explaining_why(seeded_app):
 def test_every_item_is_displayed_with_its_category(seeded_app):
     for item in catalog.active_items():
         assert "·" in item.display_name
-
-
-
-
-# --- The director keeps the catalog in the app (Phase 3) ------------------------------
-#
-# The decision of 27 October 2026: once the Valuations import has run, the
-# catalog lives in the app, as long as an admin can add items and change any
-# item's bucket, used rate and price there. These go through the real pages.
 
 
 def test_an_admin_adds_an_item_through_the_page(client):
@@ -270,4 +240,4 @@ def test_an_admin_changes_an_items_price_through_the_page(client):
     client.post(f"/admin/items/{bottles.id}/price", data={"unit_price_new": "9.25"})
     db.session.refresh(bottles)
     assert bottles.current_price() == Decimal("9.25")
-    assert len(bottles.prices) == 2  # the old price is kept
+    assert len(bottles.prices) == 2

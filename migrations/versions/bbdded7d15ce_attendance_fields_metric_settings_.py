@@ -1,26 +1,7 @@
-"""attendance fields, metric settings, annual figures
-
-Attendance gains the per-event figures from the program director's sheet and the FOCUS
-North America template (PRODUCTION_DESIGN 7.1). education_participants is
-RENAMED to education_participants_total, not dropped and re-added:
-autogenerate wrote it as a drop, which would have thrown away every class
-count already entered. Every count gets a CHECK (>= 0), the existing two
-included.
-
-metric_definition holds an admin's label and on/off for a metric; a metric
-nobody has touched has no row. annual_metric_value holds the figures typed
-once a year.
-
-Revision ID: bbdded7d15ce
-Revises: fd91a187fae6
-Create Date: 2026-10-27 19:52:18.554700
-
-"""
 from alembic import op
 import sqlalchemy as sa
 
 
-# revision identifiers, used by Alembic.
 revision = 'bbdded7d15ce'
 down_revision = 'fd91a187fae6'
 branch_labels = None

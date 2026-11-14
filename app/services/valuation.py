@@ -1,16 +1,3 @@
-"""How a line of donated goods turns into a dollar figure.
-
-    line_value = quantity x unit_price_new x (used_multiplier if used else 1.0)
-
-The used multiplier is NOT a constant. FOCUS values used goods at half price
-in most categories and at three quarters for clothing, and those rates are
-theirs to change. So the rate always arrives here as an argument, read from
-the item row it belongs to.
-
-There is no 0.5 and no 0.75 anywhere in this file, and there must never be.
-tests/test_valuation.py has a test that changes a seeded rate and asserts the
-answer follows it -- that test fails the moment anyone hardcodes one.
-"""
 
 from decimal import Decimal
 
@@ -19,16 +6,10 @@ from app.models.money import to_money
 
 ZERO = Decimal("0.00")
 
-# Goods in new condition are worth their full fair market value.
 NEW_CONDITION_MULTIPLIER = Decimal("1")
 
 
 def effective_multiplier(condition, used_multiplier):
-    """The multiplier to apply for this condition.
-
-    New goods are worth full value. Used goods are worth whatever rate the
-    item itself carries.
-    """
     if condition == CONDITION_USED:
         if used_multiplier is None:
             raise ValueError(
@@ -44,21 +25,11 @@ def effective_multiplier(condition, used_multiplier):
 
 
 def line_value(quantity, unit_price, used_multiplier, condition):
-    """Dollar value of one line, rounded to the cent.
-
-    Returns None when the price is not known yet -- that is the normal state
-    of a manual-price line before The Center Director types a value, and it is what
-    stops the batch from being approved.
-    """
     if unit_price is None:
         return None
     if not quantity:
         return ZERO
 
-    # Zero dollars is zero dollars whether the goods are new or used, so this
-    # does not need a rate. That is what lets a custom item be recorded at a
-    # price of zero before anyone has decided which category -- and therefore
-    # which used rate -- it belongs to.
     if Decimal(str(unit_price)) == 0:
         return ZERO
 
@@ -68,11 +39,6 @@ def line_value(quantity, unit_price, used_multiplier, condition):
 
 
 def clamp_quantity(value):
-    """Quantities are whole numbers and never negative.
-
-    Anything unparseable becomes zero rather than raising, because this runs on
-    input coming from a phone in someone's hand.
-    """
     try:
         quantity = int(value)
     except (TypeError, ValueError):
@@ -81,13 +47,6 @@ def clamp_quantity(value):
 
 
 def parse_price(raw):
-    """Read a price out of a box that is allowed to be empty.
-
-    Returns None for anything that is not a usable price -- blank, a stray
-    dollar sign, or someone typing "twenty". None means "no price yet", which
-    is what keeps the batch from being approved, so guessing here would be
-    worse than returning nothing.
-    """
     if raw is None:
         return None
     if isinstance(raw, str):
@@ -102,7 +61,6 @@ def parse_price(raw):
 
 
 def total_value(lines):
-    """Sum of computed values, skipping lines that have no price yet."""
     total = ZERO
     for line in lines:
         if line.computed_value is not None:

@@ -1,4 +1,3 @@
-"""Custom items and the review queue."""
 
 import datetime
 from decimal import Decimal
@@ -16,9 +15,6 @@ def a_batch(date=None):
     )
 
 
-# --- Adding something not on the list --------------------------------------
-
-
 def test_a_custom_line_is_flagged_for_review(seeded_app):
     batch = a_batch()
     line = batches.add_custom_line(batch, name="Bike helmet", quantity=1,
@@ -32,8 +28,6 @@ def test_a_custom_line_is_flagged_for_review(seeded_app):
 
 
 def test_a_custom_line_keeps_the_batch_date(seeded_app):
-    """The date is never typed by hand, and resolving the line later must not
-    move it into the month it was resolved in."""
     entered_on = clock.local_today() - datetime.timedelta(days=10)
     batch = a_batch(date=entered_on)
     line = batches.add_custom_line(batch, name="Bike helmet", quantity=1,
@@ -67,9 +61,6 @@ def test_a_custom_line_can_be_committed_with_the_batch(seeded_app):
 
 
 def test_a_custom_line_defaults_to_a_price_of_zero(seeded_app):
-    """She is adding this mid-distribution without knowing what it is worth.
-    Making her invent a number before she can approve would be worse than
-    recording zero and pricing it properly in the review queue."""
     batch = a_batch()
     line = batches.add_custom_line(batch, name="Mystery item", quantity=1)
 
@@ -91,8 +82,6 @@ def test_a_custom_line_with_no_price_does_not_block_approval(seeded_app):
 
 
 def test_a_used_custom_line_at_zero_is_worth_zero(seeded_app):
-    """It has no category yet and therefore no used rate, but zero dollars is
-    zero dollars either way."""
     batch = a_batch()
     line = batches.add_custom_line(
         batch, name="Mystery item", quantity=3, condition="used"
@@ -129,14 +118,9 @@ def test_a_custom_note_is_kept(seeded_app):
 
 
 def test_a_custom_line_is_shown_as_not_in_catalog(seeded_app):
-    """Every place an item is displayed has to say what it is. An unresolved
-    custom line has no category yet, so it says so."""
     batch = a_batch()
     line = batches.add_custom_line(batch, name="Bike helmet", quantity=1)
     assert "not in catalog" in line.display_name
-
-
-# --- Resolving --------------------------------------------------------------
 
 
 def test_resolving_against_an_existing_item_picks_up_its_rate(seeded_app):
@@ -212,16 +196,13 @@ def test_resolving_without_an_item_is_refused(seeded_app):
 def test_resolving_to_an_item_with_no_price_asks_for_one(seeded_app):
     batch = a_batch()
     line = batches.add_custom_line(batch, name="A booster seat", quantity=1)
-    stroller = catalog.find_item("Booster Seat 2-in-1", "baby_mom_items")  # no price
+    stroller = catalog.find_item("Booster Seat 2-in-1", "baby_mom_items")
 
     with pytest.raises(ValueError, match="no price on file"):
         review.resolve_line(line, item=stroller)
 
     review.resolve_line(line, item=stroller, unit_price=300)
     assert line.computed_value == Decimal("300.00")
-
-
-# --- Pricing a catalog line that was approved without one -------------------
 
 
 def test_an_approved_unpriced_line_waits_in_the_queue(seeded_app):
@@ -232,14 +213,11 @@ def test_an_approved_unpriced_line_waits_in_the_queue(seeded_app):
     batches.commit_batch(batch)
 
     assert review.flagged_lines() == [line]
-    # It needs a price, not an identity -- it already has a catalog item.
     assert not line.is_custom
     assert line.needs_price
 
 
 def test_pricing_a_line_puts_the_value_into_its_own_batch(seeded_app):
-    """The whole point of flagging instead of blocking: the value lands on the
-    batch it was counted in, not the one open when it was priced."""
     entered_on = clock.local_today() - datetime.timedelta(days=10)
     batch = a_batch(date=entered_on)
     line = batches.set_line(
@@ -269,14 +247,11 @@ def test_pricing_a_used_line_applies_the_items_own_rate(seeded_app):
 
     review.price_line(line, unit_price=200)
 
-    # The stroller's own rate, read from the item, not a constant.
     assert line.used_multiplier_at_time == 0.5
     assert line.computed_value == Decimal("100.00")
 
 
 def test_pricing_later_uses_the_rate_frozen_at_approval(seeded_app):
-    """Only the price was missing. Changing the catalog rate in between must
-    not move the value of something already committed."""
     batch = a_batch()
     stroller = catalog.find_item("Stroller", "baby_mom_items")
     line = batches.set_line(batch, stroller, quantity=1, condition="used")
@@ -333,8 +308,6 @@ def test_pricing_with_no_number_and_no_catalog_price_asks_for_one(seeded_app):
 
 
 def test_pricing_falls_back_to_the_catalog_price_when_there_is_one(seeded_app):
-    """Small Rideable Toy Cars are manual-price but do have a trustworthy new
-    price, so leaving the box empty confirms it rather than failing."""
     batch = a_batch()
     cars = catalog.find_item("Small Rideable Toy Cars", "home_goods")
     line = batches.set_line(batch, cars, quantity=1)
@@ -365,16 +338,7 @@ def test_a_custom_line_is_not_sent_through_the_pricing_path(seeded_app):
         review.price_line(line, unit_price=10)
 
 
-# --- A price of zero is not a price -----------------------------------------
-#
-# Zero means "nobody has decided yet", so a line recorded at zero belongs in the
-# queue no matter which screen put it there or how many times it has been round
-# already. These tests walk that round trip in both directions.
-
-
 def a_committed_stroller_line():
-    """One approved line with no price on it -- the plainest thing the queue
-    exists for."""
     batch = a_batch()
     line = batches.set_line(
         batch, catalog.find_item("Stroller", "baby_mom_items"), quantity=1
@@ -395,8 +359,6 @@ def test_pricing_a_line_at_zero_leaves_it_in_the_queue(seeded_app):
 
 
 def test_a_priced_line_put_back_to_zero_returns_to_the_queue(seeded_app):
-    """The reported bug: price it from the queue, then take it back to zero on
-    the review screen, and it has to come back."""
     line = a_committed_stroller_line()
 
     review.price_line(line, unit_price=5)
@@ -407,13 +369,10 @@ def test_a_priced_line_put_back_to_zero_returns_to_the_queue(seeded_app):
     assert line.computed_value == Decimal("0.00")
     assert line.needs_review
     assert review.flagged_lines() == [line]
-    # And it has not been reviewed, whatever the earlier pricing said.
     assert line.reviewed_at is None
 
 
 def test_the_zero_round_trip_can_be_repeated(seeded_app):
-    """Not a one-shot flag. Each time the value goes away it comes back to the
-    queue, and each time a real value arrives it leaves again."""
     line = a_committed_stroller_line()
 
     for unit_price, expected in [(5, False), (0, True), (25, False), (0, True)]:
@@ -423,8 +382,6 @@ def test_the_zero_round_trip_can_be_repeated(seeded_app):
 
 
 def test_a_zero_priced_line_is_flagged_when_the_batch_is_approved(seeded_app):
-    """Typed as zero on the counting screen, never touched again. Approving has
-    to notice, the same as it does for a line with no price at all."""
     batch = a_batch()
     line = batches.set_line(
         batch, catalog.find_item("Stroller", "baby_mom_items"), quantity=2,
@@ -437,13 +394,10 @@ def test_a_zero_priced_line_is_flagged_when_the_batch_is_approved(seeded_app):
     assert line.needs_review
     assert batch.flagged_lines == [line]
     assert batch.needs_review
-    # The quantity is still recorded in full. That is the whole point.
     assert batch.item_count == 2
 
 
 def test_a_draft_line_is_not_put_in_the_queue_mid_count(seeded_app):
-    """She is still typing. The queue is for lines that got away, not for rows
-    she has had open for four seconds -- approval is what sweeps them up."""
     batch = a_batch()
     line = batches.set_line(
         batch, catalog.find_item("Stroller", "baby_mom_items"), quantity=1,
@@ -456,8 +410,6 @@ def test_a_draft_line_is_not_put_in_the_queue_mid_count(seeded_app):
 
 
 def test_resolving_a_custom_line_at_zero_keeps_it_in_the_queue(seeded_app):
-    """It has an identity now, so it is no longer waiting for a catalog match --
-    but it is still worth nothing, so it is still waiting."""
     batch = a_batch()
     line = batches.add_custom_line(batch, name="A stroller", quantity=1)
     batches.commit_batch(batch)
@@ -469,7 +421,6 @@ def test_resolving_a_custom_line_at_zero_keeps_it_in_the_queue(seeded_app):
     assert line.item_id is not None
     assert not line.is_custom
     assert line.needs_review
-    # It moved sections: it is waiting for a price now, not for a match.
     assert review.flagged_lines() == [line]
 
 
@@ -490,8 +441,6 @@ def test_a_resolved_line_leaves_the_queue_once_it_is_worth_something(seeded_app)
 
 
 def test_a_zero_line_going_back_to_the_queue_is_written_to_the_audit_log(seeded_app):
-    """Un-finishing a line on an approved batch is a change to reported data
-    like any other."""
     from app.services import audit
 
     line = a_committed_stroller_line()
@@ -507,8 +456,6 @@ def test_a_zero_line_going_back_to_the_queue_is_written_to_the_audit_log(seeded_
 
 
 def test_a_zero_quantity_line_is_not_in_the_queue(seeded_app):
-    """A line counted back down to zero is not waiting for anything -- it is not
-    in the batch at all, and approval drops it."""
     batch = a_batch()
     stroller = catalog.find_item("Stroller", "baby_mom_items")
     line = batches.set_line(batch, stroller, quantity=1, unit_price=0)

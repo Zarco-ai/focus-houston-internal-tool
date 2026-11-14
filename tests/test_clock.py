@@ -1,12 +1,3 @@
-"""Time.
-
-Render's servers run on UTC; Houston is five or six hours behind. Every test
-here is a way the app could put something on the wrong day, written down so
-it cannot come back.
-
-Times are frozen with clock.freeze(), so "23:30 in Houston" really is 23:30 in
-Houston whatever the machine running the tests thinks the time is.
-"""
 
 import datetime
 import pathlib
@@ -25,12 +16,7 @@ def houston(year, month, day, hour, minute=0):
     return datetime.datetime(year, month, day, hour, minute, tzinfo=HOUSTON)
 
 
-# --- local_today() is Houston's date, not the server's --------------------
-
-
 def test_local_today_at_23_30_houston_is_still_the_same_day():
-    """23:30 CDT on Oct 20 is already 04:30 on Oct 21 in UTC -- the date the
-    server would have given."""
     moment = houston(2026, 10, 20, 23, 30)
     assert moment.astimezone(datetime.timezone.utc).date() == datetime.date(2026, 10, 21)
 
@@ -44,7 +30,6 @@ def test_local_today_at_00_30_houston_is_the_next_day():
 
 
 def test_local_today_at_23_30_in_winter_is_still_the_same_day():
-    """Central Standard Time is UTC-6, a different offset from summer."""
     with clock.freeze(houston(2026, 1, 15, 23, 30)):
         assert clock.local_today() == datetime.date(2026, 1, 15)
 
@@ -52,10 +37,8 @@ def test_local_today_at_23_30_in_winter_is_still_the_same_day():
 @pytest.mark.parametrize(
     "moment, expected",
     [
-        # The spring-forward day: 2am becomes 3am on March 8, 2026.
         (houston(2026, 3, 8, 23, 30), datetime.date(2026, 3, 8)),
         (houston(2026, 3, 9, 0, 30), datetime.date(2026, 3, 9)),
-        # The fall-back day: 2am becomes 1am on November 1, 2026.
         (houston(2026, 11, 1, 23, 30), datetime.date(2026, 11, 1)),
         (houston(2026, 11, 2, 0, 30), datetime.date(2026, 11, 2)),
     ],
@@ -65,9 +48,6 @@ def test_local_today_is_right_on_both_daylight_saving_changeover_days(moment, ex
         assert clock.local_today() == expected
 
 
-# --- The rules about timestamps --------------------------------------------
-
-
 def test_now_utc_is_timezone_aware_utc():
     now = clock.now_utc()
     assert now.tzinfo is not None
@@ -75,7 +55,6 @@ def test_now_utc_is_timezone_aware_utc():
 
 
 def test_to_local_refuses_a_naive_datetime():
-    """A timestamp without a zone is ambiguous by definition."""
     with pytest.raises(ValueError):
         clock.to_local(datetime.datetime(2026, 10, 20, 23, 30))
 
@@ -97,12 +76,7 @@ def test_freeze_puts_the_real_clock_back_afterwards():
     assert clock.local_today().year > 2000
 
 
-# --- The app uses it --------------------------------------------------------
-
-
 def test_an_evening_batch_gets_houstons_date_not_the_servers(seeded_app):
-    """The bug this module exists for: an evening class recorded on
-    tomorrow's date."""
     with clock.freeze(houston(2026, 10, 20, 19, 45)):
         batch = batches.open_batch()
     assert batch.date == datetime.date(2026, 10, 20)
@@ -118,7 +92,6 @@ def test_a_draft_from_yesterday_is_stale_just_after_houston_midnight(seeded_app)
 
 
 def test_committed_at_is_stored_as_utc_and_comes_back_timezone_aware(seeded_app):
-    """TIMESTAMPTZ round trip through PostgreSQL."""
     from app.extensions import db
     from app.services import catalog
 
@@ -135,11 +108,6 @@ def test_committed_at_is_stored_as_utc_and_comes_back_timezone_aware(seeded_app)
     assert clock.to_local(stored).date() == datetime.date(2026, 10, 20)
 
 
-# --- Nothing else reads the clock ------------------------------------------
-
-# Each pattern matches the call AND the bare function used as a column
-# default (default=datetime.date.today), which is how the prototype did it.
-# `.now` is allowed only when given a time zone: .now(UTC).
 SERVER_CLOCK_CALLS = [
     (r"\bdate\.today\b", "date.today"),
     (r"\bdatetime\.today\b", "datetime.today"),
@@ -149,8 +117,6 @@ SERVER_CLOCK_CALLS = [
 
 
 def test_no_date_today_or_naive_datetime_now_outside_the_clock_module():
-    """Every call to the server's clock goes through app/services/clock.py.
-    Anything else here would quietly reintroduce the off-by-one-day bug."""
     offenders = []
     for path in sorted(APP_DIR.rglob("*.py")):
         if path.name == "clock.py" and path.parent.name == "services":
@@ -165,8 +131,6 @@ def test_no_date_today_or_naive_datetime_now_outside_the_clock_module():
 
 
 def test_the_clock_scan_would_catch_each_forbidden_call():
-    """Guards the guard: if one of these regexes is broken, the scan above
-    passes for the wrong reason."""
     samples = [
         "x = datetime.date.today()",
         "x = date.today()",

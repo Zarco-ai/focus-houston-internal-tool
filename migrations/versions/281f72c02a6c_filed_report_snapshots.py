@@ -1,18 +1,7 @@
-"""filed report snapshots
-
-One new table (PRODUCTION_DESIGN 7.6). Rows are never updated or deleted;
-the model refuses both. payload is JSONB on PostgreSQL.
-
-Revision ID: 281f72c02a6c
-Revises: 9111fde27afd
-Create Date: 2026-10-28 16:01:47.045645
-
-"""
 from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
 
-# revision identifiers, used by Alembic.
 revision = '281f72c02a6c'
 down_revision = '9111fde27afd'
 branch_labels = None
@@ -37,7 +26,6 @@ def upgrade():
     )
     with op.batch_alter_table('report_snapshot', schema=None) as batch_op:
         batch_op.create_index(batch_op.f('ix_report_snapshot_period_start'), ['period_start'], unique=False)
-
 
 
 def downgrade():

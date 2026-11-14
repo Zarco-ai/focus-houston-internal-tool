@@ -1,8 +1,3 @@
-"""Service types an admin manages (Phase 4).
-
-Add, rename, switch off, switch back on. Never delete: approved batches and
-the monthly report point at them.
-"""
 
 import pytest
 
@@ -85,9 +80,6 @@ def test_switching_off_and_on_is_audited(seeded_app):
 
     rows = AuditLog.query.filter_by(table_name="service_type", field="active").order_by(AuditLog.id)
     assert [(r.old_value, r.new_value) for r in rows] == [("yes", "no"), ("no", "yes")]
-
-
-# --- The page -------------------------------------------------------------------------
 
 
 def test_the_page_adds_renames_and_switches_off(client, seeded_app):

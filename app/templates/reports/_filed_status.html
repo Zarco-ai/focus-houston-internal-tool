@@ -1,4 +1,3 @@
-{# The filed copies of this report, and whether the live numbers still match. #}
 {% for comparison in filed %}
   {% set s = comparison.snapshot %}
   <p class="flash {{ 'flash-warn' if comparison.changed else 'flash-success' }}" style="margin:6px 0">

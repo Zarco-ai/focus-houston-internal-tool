@@ -1,11 +1,3 @@
-"""The fast Program Health calculation agrees with the brute-force one.
-
-app/services/retention.py (bisects sorted dates) against
-app/services/verify.py (walks every day), on random mothers whose visit
-gaps cluster around the window's edges -- 59, 60, 61, 62 days -- because
-that's where they can disagree. This is how the day-61 separation bug was
-found (Phase 9); this test keeps it found. No database needed.
-"""
 
 import datetime
 import random

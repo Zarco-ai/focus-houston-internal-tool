@@ -1,8 +1,3 @@
-"""The Totals page and the admin pages behind it (Phase 4).
-
-What the page shows for a period, how the period is picked, and that only
-an admin changes what the report contains.
-"""
 
 import datetime
 
@@ -26,11 +21,8 @@ def page(client, **params):
     return client.get("/totals", query_string=params).get_data(as_text=True)
 
 
-# --- What it shows ---------------------------------------------------------------------
-
-
 def test_the_page_shows_every_group_in_template_order(client, seeded_app):
-    for setting in metrics.settings():   # some start off (meals, medical...)
+    for setting in metrics.settings():
         metrics.update_setting(setting.key, enabled=True)
     text = page(client)
     positions = [text.index(f">{group.label}<") for group in metrics.GROUPS]
@@ -44,8 +36,8 @@ def test_non_food_gik_on_the_page_is_the_computed_one(client, seeded_app):
     text = page(client)
 
     assert "Non-Food GIK $&#39;s" in text or "Non-Food GIK $'s" in text
-    assert "$77.30" in text   # $72 coat + 10 x $0.53, and no bus pass
-    assert "$10.00" in text   # the bus pass, on its own line
+    assert "$77.30" in text
+    assert "$10.00" in text
 
 
 def test_a_switched_off_metric_is_not_on_the_page(client, seeded_app):
@@ -80,9 +72,6 @@ def test_annual_figures_need_a_whole_year(client, seeded_app, admin_user):
     year_page = page(client, year=year)
     assert "whole year only" not in year_page
     assert ">9<" in year_page
-
-
-# --- Picking the period -----------------------------------------------------------------
 
 
 def test_the_default_is_the_current_month(client, seeded_app):
@@ -122,7 +111,6 @@ def test_previous_and_next_cross_a_year_boundary(client, seeded_app):
 
 
 def test_the_page_prints(client, seeded_app):
-    """A print button, a heading only paper sees, and print styles."""
     text = page(client)
     assert "data-print" in text and "print-heading" in text
     css = client.get("/static/css/app.css").get_data(as_text=True)
@@ -131,9 +119,6 @@ def test_the_page_prints(client, seeded_app):
 
 def test_staff_see_totals(staff_client, seeded_app):
     assert staff_client.get("/totals").status_code == 200
-
-
-# --- The admin pages --------------------------------------------------------------------
 
 
 def test_the_metrics_page_switches_off_and_renames(client, seeded_app):

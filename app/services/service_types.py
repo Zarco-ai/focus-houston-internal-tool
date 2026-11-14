@@ -1,15 +1,3 @@
-"""The kinds of session a batch can be: Diaper Distribution, ESL Class, ...
-
-Admins add, rename and switch these off from Settings (Phase 0: "Admins add
-and rename them"). The program director's sheet has about fifteen kinds of event, and a
-new one should be a form, not a developer.
-
-A service type is never deleted. Approved batches point at it, and the
-monthly report reads its name, so switching one off only stops it being
-offered for new batches. Renaming one renames it everywhere, past batches
-included -- it is the same kind of session with a better name. Every change
-is audited.
-"""
 
 from app.extensions import db
 from app.models import ServiceType
@@ -20,7 +8,6 @@ MAX_NAME = 100
 
 
 def all_service_types():
-    """Active first, then switched off; each A-Z."""
     return ServiceType.query.order_by(ServiceType.active.desc(), ServiceType.name).all()
 
 
@@ -29,8 +16,6 @@ def active_service_types():
 
 
 def choices_for(batch):
-    """The dropdown for one batch: every active type, plus the batch's own
-    type if it has since been switched off, so the page still shows it."""
     choices = active_service_types()
     current = batch.service_type
     if current is not None and not current.active:
@@ -39,8 +24,6 @@ def choices_for(batch):
 
 
 def can_assign(batch, service_type):
-    """A switched-off type can't be picked for a batch -- unless it is the
-    one the batch already has."""
     return service_type.active or service_type.id == batch.service_type_id
 
 

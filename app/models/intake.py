@@ -1,29 +1,3 @@
-"""Intakes: the timer, the survey, and the qualities checklist.
-
-  intake_session         One intake's timer. Its state is timestamps on the
-                         server, so a refresh, a sleeping phone or another
-                         device changes nothing. Pauses are accumulated in
-                         paused_seconds, not stored one row each: nothing
-                         reports on individual pauses (PRODUCTION_DESIGN 7.3).
-                         One running or paused timer per person, enforced by
-                         a partial unique index, not just the page.
-
-  intake_survey          What the program director records with the mother: her card
-                         number, the date, why she joined, how likely she is
-                         to come back and why. Saving it creates the
-                         participant and her first visit.
-
-  quality_option         The "unique qualities" checklist. The program director manages
-  intake_survey_quality  the options; the link table holds the ticks.
-
-Free text is short, labelled "no names" on the form, never logged and in no
-export. The qualities are the most sensitive thing in the app: visible to
-signed-in users only.
-
-Final minutes, where the duration came from, and "needs confirmation" are
-computed (app/services/intake.py), never stored: both raw values are kept,
-so the derived ones can't disagree with them.
-"""
 
 import sqlalchemy as sa
 from sqlalchemy import CheckConstraint
@@ -39,7 +13,7 @@ STATUSES = (STATUS_RUNNING, STATUS_PAUSED, STATUS_STOPPED, STATUS_DISCARDED)
 ACTIVE_STATUSES = (STATUS_RUNNING, STATUS_PAUSED)
 
 SLIDER_STEP = 15
-SLIDER_MAX = 180  # shown as "3+ hours"
+SLIDER_MAX = 180
 
 REASON_MAX = 300
 NOTE_MAX = 200
@@ -68,8 +42,6 @@ class IntakeSession(db.Model):
             f"AND mod(slider_minutes, {SLIDER_STEP}) = 0)",
             name="ck_intake_session_slider",
         ),
-        # Phase 0 answer 3: one timer per person. The page checks too, but
-        # two taps on two devices at once would get past a page check.
         sa.Index(
             "uq_intake_session_one_active_per_person",
             "started_by_id",
@@ -88,19 +60,12 @@ class IntakeSession(db.Model):
     paused_at = db.Column(db.DateTime(timezone=True), nullable=True)
     paused_seconds = db.Column(db.Integer, nullable=False, default=0, server_default="0")
 
-    # The two raw values. NULL timer_seconds means the timer wasn't used
-    # (a time typed afterwards with the slider); NULL slider_minutes means
-    # nobody corrected the timer.
     timer_seconds = db.Column(db.Integer, nullable=True)
     slider_minutes = db.Column(db.Integer, nullable=True)
 
     confirmed_by_id = db.Column(db.Integer, db.ForeignKey("app_user.id"), nullable=True)
     confirmed_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
-    # The survey answers typed so far but not yet saved, carried by every
-    # timer button so stopping the timer doesn't wipe them. Cleared when the
-    # survey is saved (the answers move into intake_survey) or the intake is
-    # discarded. Same "no names" rule as the survey itself.
     survey_draft = db.Column(db.JSON, nullable=True)
 
     started_by = db.relationship("AppUser", foreign_keys=[started_by_id])
@@ -168,5 +133,4 @@ class IntakeSurvey(db.Model):
                                 order_by=sa.func.lower(QualityOption.label))
 
     def __repr__(self):
-        # Ids only. Never the free text, never the code.
         return f"<IntakeSurvey {self.id} participant={self.participant_id}>"

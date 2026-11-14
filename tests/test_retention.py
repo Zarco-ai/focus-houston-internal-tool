@@ -1,11 +1,3 @@
-"""Retention, engagement and turnover, against mothers worked out by hand.
-
-Each test is a short story with named mothers and dates, and the expected
-numbers were worked out on paper first (docs/METRICS.md has the same
-examples). The window is 60 days throughout unless a test says otherwise.
-
-The names are invented for the tests. The app itself never holds a name.
-"""
 
 import datetime
 import itertools
@@ -25,8 +17,6 @@ _refs = itertools.count(1)
 
 @pytest.fixture
 def mom(seeded_app, admin_user):
-    """mom(D(2026, 1, 3), D(2026, 2, 10)) -> a participant whose intake is the
-    first date and whose later visits came through the Google Form."""
     codes = iter(card_numbers.generate(400, rng=random.Random(11)))
     loaded = []
 
@@ -50,11 +40,7 @@ def measure(start, end, today=D(2026, 9, 1), window=60):
 JANUARY = (D(2026, 1, 1), D(2026, 1, 31))
 
 
-# --- Active on a day ----------------------------------------------------------------------
-
-
 def test_ana_is_active_exactly_60_days_after_a_visit_and_not_61(mom):
-    """Ana's last visit is 1 January. 2 March is 60 days later; 3 March is 61."""
     mom(D(2026, 1, 1))
     people = retention.visits_by_person()
     [dates] = people.values()
@@ -70,23 +56,17 @@ def test_a_visit_after_the_day_doesnt_make_her_active_on_it(mom):
     assert not retention.is_active(dates, D(2026, 4, 30), 60)
 
 
-# --- The worked example from the design doc (7.7) -----------------------------------------
-
-
 @pytest.fixture
 def worked_example(mom):
-    """January 2026. On 1 January ten mothers are active. During January two
-    of them lapse, three mothers who had lapsed earlier come back, and four
-    new mothers have their intake. Three of the four come back in February."""
-    for _ in range(8):                                        # retained
+    for _ in range(8):
         mom(D(2025, 12, 15), D(2026, 1, 20))
-    for _ in range(2):                                        # lapse 5 January
+    for _ in range(2):
         mom(D(2025, 11, 5))
-    for _ in range(3):                                        # came back
+    for _ in range(3):
         mom(D(2025, 6, 1), D(2025, 9, 1), D(2026, 1, 15))
-    for _ in range(3):                                        # new, came back
+    for _ in range(3):
         mom(D(2026, 1, 10), D(2026, 2, 1))
-    mom(D(2026, 1, 10))                                       # new, didn't
+    mom(D(2026, 1, 10))
     db.session.commit()
 
 
@@ -99,28 +79,24 @@ def test_the_worked_example_counts(worked_example):
 
 def test_the_two_retention_rates_differ_by_exactly_the_returners(worked_example):
     r = measure(*JANUARY)
-    assert r.retention_focus == Decimal("110.0")   # (15 − 4) ÷ 10
-    assert r.retained_rate == Decimal("80.0")      # 8 ÷ 10
+    assert r.retention_focus == Decimal("110.0")
+    assert r.retained_rate == Decimal("80.0")
 
 
 def test_turnover_and_engagement_in_the_worked_example(worked_example):
     r = measure(*JANUARY)
     assert r.average_headcount == Decimal("12.5")
-    assert r.turnover == Decimal("16.0")           # 2 ÷ 12.5
+    assert r.turnover == Decimal("16.0")
     assert (r.engaged, r.not_engaged, r.maturing) == (3, 1, 0)
     assert r.engagement == Decimal("75.0")
 
 
-# --- n/a, never 0 and never an error -------------------------------------------------------
-
-
 def test_nobody_active_at_the_start_is_n_a_not_zero(mom):
-    """Bea is the program's first mother: intake 10 January."""
     mom(D(2026, 1, 10))
     r = measure(*JANUARY)
     assert (r.S, r.E, r.N) == (0, 1, 1)
     assert r.retention_focus is None and r.retained_rate is None
-    assert r.turnover == Decimal("0.0")            # 0 separations ÷ 0.5 average
+    assert r.turnover == Decimal("0.0")
 
 
 def test_an_empty_program_is_n_a_everywhere(seeded_app):
@@ -128,14 +104,7 @@ def test_an_empty_program_is_n_a_everywhere(seeded_app):
     assert (r.retention_focus, r.retained_rate, r.turnover, r.engagement) == (None,) * 4
 
 
-# --- Separations and coming back (Phase 0 answer 4) ------------------------------------------
-
-
 def test_a_separation_stays_in_its_month_when_she_comes_back(mom):
-    """Cara visits 1 January, lapses on 3 March, comes back 3 April. March
-    has her separation; April has her back, and the separation stays.
-    (Back on 1 April would make her active ON 1 April: a visit on the day
-    itself counts.)"""
     mom(D(2026, 1, 1), D(2026, 4, 3))
     march = measure(D(2026, 3, 1), D(2026, 3, 31))
     april = measure(D(2026, 4, 1), D(2026, 4, 30))
@@ -145,7 +114,6 @@ def test_a_separation_stays_in_its_month_when_she_comes_back(mom):
 
 
 def test_a_separation_that_hasnt_happened_yet_isnt_counted(mom):
-    """Dee's window closes on 3 March. Measured on 1 March, she hasn't left."""
     mom(D(2026, 1, 1))
     r = measure(D(2026, 3, 1), D(2026, 3, 31), today=D(2026, 3, 1))
     assert r.truncated and r.measured_to == D(2026, 3, 1)
@@ -158,42 +126,31 @@ def test_a_period_that_hasnt_started_is_n_a(mom):
     assert r.future and r.retention_focus is None and r.turnover is None
 
 
-# --- Engagement (Phase 0 answer 5) --------------------------------------------------------------
-
-
 def test_engagement_counts_a_return_after_the_period_ends(mom):
-    """Eva joins 28 January and comes back 20 February: engaged in January."""
     mom(D(2026, 1, 28), D(2026, 2, 20))
     assert measure(*JANUARY).engaged == 1
 
 
 def test_coming_back_on_day_61_isnt_engagement(mom):
-    mom(D(2026, 1, 10), D(2026, 3, 12))       # 61 days later
+    mom(D(2026, 1, 10), D(2026, 3, 12))
     r = measure(*JANUARY)
     assert (r.engaged, r.not_engaged) == (0, 1)
 
 
 def test_the_same_day_isnt_coming_back(mom):
-    """Fay filled in the form at her own intake. That's not a return."""
     fay = mom(D(2026, 1, 10))
     participants.add_visit(fay, D(2026, 1, 10), VISIT_GOOGLE_FORM, "same-day")
     assert measure(*JANUARY).engaged == 0
 
 
 def test_a_mother_whose_window_is_still_open_is_left_out_until_it_closes(mom):
-    """Gia joined 20 August; on 1 September her 60 days aren't over."""
     mom(D(2026, 8, 20))
     r = measure(D(2026, 8, 1), D(2026, 8, 31), today=D(2026, 9, 1))
     assert (r.engaged, r.not_engaged, r.maturing) == (0, 0, 1)
     assert r.engagement is None
 
 
-# --- Merged cards ---------------------------------------------------------------------------------
-
-
 def test_a_merged_card_is_one_mother(mom):
-    """Hana lost her card. Old card: intake 1 Dec. New card: 20 Jan. Merged,
-    she joined 1 Dec, is one person, and was active all of January."""
     old = mom(D(2025, 12, 1))
     new = mom(D(2026, 1, 20))
     form_review.merge(old.code, new.code)
@@ -203,12 +160,7 @@ def test_a_merged_card_is_one_mother(mom):
     assert retention.distinct_people_with_visits(*JANUARY) == 1
 
 
-# --- The invariant, for any mothers and any period ------------------------------------------------
-
-
 def test_e_is_always_retained_plus_returned_plus_new(mom):
-    """E = R + Returned + New still active, for 40 random mothers over 30
-    random periods. If the partition ever leaks, this finds it."""
     rng = random.Random(2026)
     base = D(2025, 1, 1)
     for _ in range(40):
@@ -225,9 +177,6 @@ def test_e_is_always_retained_plus_returned_plus_new(mom):
         assert r.engaged + r.not_engaged + r.maturing == r.N
 
 
-# --- The setting -----------------------------------------------------------------------------------
-
-
 def test_the_window_is_a_setting_and_its_change_is_audited(mom):
     mom(D(2026, 1, 1))
     retention.set_window_days(30)
@@ -239,9 +188,6 @@ def test_the_window_is_a_setting_and_its_change_is_audited(mom):
     assert AuditLog.query.filter_by(field="activity_window_days").one().new_value == "30"
     with pytest.raises(ValueError):
         retention.set_window_days(3)
-
-
-# --- Program Health on Totals -----------------------------------------------------------------------
 
 
 def _timed_intake(code, minutes, day):
@@ -261,7 +207,7 @@ def test_intake_times_mean_and_median(seeded_app, admin_user):
     assert values["intakes_timed"] == 5
     assert values["intake_hours_total"] == Decimal("6.0")
     assert values["intake_minutes_mean"] == Decimal("72.0")
-    assert values["intake_minutes_median"] == Decimal("45.0")   # the 3-hour one barely moves it
+    assert values["intake_minutes_median"] == Decimal("45.0")
 
 
 def test_an_intake_waiting_to_be_checked_isnt_counted(seeded_app, admin_user):
@@ -279,7 +225,6 @@ def test_an_intake_waiting_to_be_checked_isnt_counted(seeded_app, admin_user):
 
 
 def test_unique_clients_is_a_true_count_beside_the_event_sum(mom):
-    """Ivy came to two events in January: one mother, not two."""
     mom(D(2026, 1, 5), D(2026, 1, 19))
     mom(D(2026, 1, 12))
     values = metrics.values(*JANUARY)
@@ -294,9 +239,9 @@ def test_totals_shows_program_health_with_its_counts(client, mom):
 
     assert "PROGRAM HEALTH" in page
     assert "1 of S 2 active at both ends" in page
-    assert "50.0%" in page                       # retained: 1 ÷ 2
-    assert "Retention (FOCUS formula)" not in page   # off by default (2 Nov 2026)
-    assert "n/a" in page                         # engagement: nobody joined in January
+    assert "50.0%" in page
+    assert "Retention (FOCUS formula)" not in page
+    assert "n/a" in page
 
 
 def test_the_settings_page_changes_the_window(client, seeded_app):
@@ -307,10 +252,8 @@ def test_the_settings_page_changes_the_window(client, seeded_app):
 
 
 def test_engagement_waits_until_everyones_window_is_over(mom):
-    """Found with made-up data (Phase 9): with one mother back and one still
-    within her 60 days, a rate of 1 of 1 = 100% would be shown. It must wait."""
-    mom(D(2026, 8, 3), D(2026, 8, 20))     # came back
-    mom(D(2026, 8, 25))                    # 60 days not over on 1 September
+    mom(D(2026, 8, 3), D(2026, 8, 20))
+    mom(D(2026, 8, 25))
     r = measure(D(2026, 8, 1), D(2026, 8, 31), today=D(2026, 9, 1))
     assert (r.engaged, r.maturing) == (1, 1)
     assert r.engagement is None
@@ -319,12 +262,8 @@ def test_engagement_waits_until_everyones_window_is_over(mom):
 
 
 def test_coming_back_on_the_day_she_would_have_lapsed_is_not_a_separation(mom):
-    """Found by the brute-force check on 2,000 made-up mothers (Phase 9).
-    Jan 1 + 61 days = 3 March: she'd have been inactive that day, but she
-    came in that day, so she never was."""
     mom(D(2026, 1, 1), D(2026, 3, 3))
     [dates] = retention.visits_by_person().values()
     assert retention.separation_dates(dates, 60) == [D(2026, 5, 3)]
     assert measure(D(2026, 3, 1), D(2026, 3, 31)).separations == 0
-    # One day later is a real gap: inactive on 3 March, back on 4 March.
     assert retention.separation_dates([D(2026, 1, 1), D(2026, 3, 4)], 60)[0] == D(2026, 3, 3)

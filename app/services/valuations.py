@@ -1,51 +1,13 @@
-"""Importing the catalog from the program director's Valuations workbook.
-
-The workbook ("Valuations - FOCUS Houston.xlsx", exported from Numbers) is
-where FOCUS keeps what each donated item is worth. The catalog in the app
-started as a hand-typed copy of an older photo of it, so the two have
-drifted: the workbook has items the catalog lacks, and spells the shared ones
-differently ("Formula (7-oz Similac )" vs "Formula - Similac 7oz").
-
-The import happens in two steps, and the first never writes anything:
-
-  plan_import()   Reads the workbook and compares it with the catalog. Returns
-                  a Plan: new items, price changes, other changes, rows it
-                  could not use, and catalog items the workbook doesn't list.
-  apply_plan()    Makes exactly the changes in a Plan, in one transaction,
-                  recorded in the audit log under the admin who ran it.
-
-Rules (docs/PRODUCTION_DESIGN.md, section 12, Phase 3):
-
-  * Nothing is guessed. A blank price, a range, text in a number cell, or a
-    used value that doesn't match the item's rate becomes price_entry=manual
-    with a note saying why -- the price is typed when the item goes out.
-  * A price change ADDS an item_price row. Old rows are never edited, so every
-    batch committed before the import still reports what it was worth.
-  * Names are matched exactly (after tidying spaces, case and dashes) or
-    through the reviewed ALIASES table below. Never fuzzily: "Pants" exists in
-    three categories at three prices.
-  * The workbook has no report-bucket column. A new item's bucket comes from
-    NEW_ITEM_BUCKETS, which is reviewed in the dry run like everything else.
-    An existing item keeps its bucket unless a decision below changes it.
-  * Running it twice changes nothing the second time.
-
-Nothing in this module imports Flask (see the layering rule in
-docs/PRODUCTION_DESIGN.md, section 3).
-"""
 
 import dataclasses
 import re
 import unicodedata
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 
-# --- Reading the workbook ------------------------------------------------------
 
-# Section headings in the workbook, and the catalog category each one means.
-# A heading not in this table stops the import: a new section is a decision
-# for a person (which category? which used rate?), not something to infer.
 SECTIONS = {
     "baby essentials": "baby_essentials",
-    "womens hygine": "womens_hygiene",   # sic, as spelled in the workbook
+    "womens hygine": "womens_hygiene",
     "home goods": "home_goods",
     "baby/mom items": "baby_mom_items",
     "adult": "clothing_adult",
@@ -53,13 +15,9 @@ SECTIONS = {
     "infant": "clothing_infant",
 }
 
-# The used rate each sheet states in its own headings: "half the price if the
-# item were used" on Baby Essentials, "Used (75%)" on Clothing Val.
 GOODS_USED_RATE = Decimal("0.50")
 CLOTHING_USED_RATE = Decimal("0.75")
 
-# Sheets read, and sheets deliberately not read (with the reason, so the dry
-# run can say so instead of silently skipping them).
 GOODS_SHEET = "Baby Essentials"
 CLOTHING_SHEET = "Clothing Val"
 SKIPPED_SHEETS = {
@@ -70,22 +28,18 @@ SKIPPED_SHEETS = {
 
 
 class ImportError_(Exception):
-    """The workbook can't be imported as it is. The message says where and why."""
+    pass
 
 
 @dataclasses.dataclass(frozen=True)
 class SourceRow:
-    """One item row of the workbook, as read. Nothing interpreted yet."""
 
     sheet: str
     row: int
     category: str
-    name: str            # as written, trimmed
-    new_cell: object     # the "price new" cell: a number, text, or None
+    name: str
+    new_cell: object
     used_rate: Decimal
-    # Baby Essentials' "Quantity" and "$ Received" cells. Where "$ Received"
-    # is filled in, one item's price is $ Received / Quantity (decision of
-    # 27 October 2026: "a crib with quantity 2 and $200 is $100 a crib").
     quantity_cell: object = None
     received_cell: object = None
 
@@ -95,30 +49,21 @@ class SourceRow:
 
 
 def tidy(text):
-    """Trim, collapse runs of spaces, and turn Numbers' special dashes and
-    spaces into plain ones. "Baby Wash/Shampoo (2‑in‑1)" uses U+2011, a
-    non-breaking hyphen, which looks identical and compares different."""
     text = unicodedata.normalize("NFKC", str(text))
     text = re.sub(r"[‐-―−]", "-", text)
     return re.sub(r"\s+", " ", text).strip()
 
 
 def match_key(text):
-    """The form two names are compared in: tidied and case-folded."""
     return tidy(text).casefold()
 
 
 def read_workbook(path):
-    """Every item row in the sheets we import, as SourceRows.
-
-    openpyxl reads the cached cell VALUES (data_only), not formulas: the file
-    comes from Numbers, and its values are what the program director sees.
-    """
-    import openpyxl  # here, not at the top: only the import command needs it
+    import openpyxl
 
     try:
         book = openpyxl.load_workbook(path, read_only=True, data_only=True)
-    except Exception as error:  # openpyxl raises a zoo of exception types
+    except Exception as error:
         raise ImportError_(f"Can't open {path} as an .xlsx workbook: {error}")
 
     try:
@@ -142,7 +87,6 @@ def read_workbook(path):
 
 
 def _cells(sheet, width):
-    """(row number, [first `width` cell values]) for every row."""
     for number, values in enumerate(
         sheet.iter_rows(max_col=width, values_only=True), start=1
     ):
@@ -165,17 +109,11 @@ def _section(name, sheet, row):
 
 
 def _read_goods(sheet):
-    """Baby Essentials: column A is the item, B its price new. A row with a
-    name and nothing (or "Range") in B is a section heading. The sheet starts
-    in the Baby Essentials section, which has no heading row of its own.
-
-    Columns C and D are "Quantity" and "$ Received"; see read_price().
-    """
     rows = []
     category = SECTIONS["baby essentials"]
     for number, (name, price, quantity, received) in _cells(sheet, 4):
         if number == 1 or _is_blank(name):
-            continue  # the header row; blank rows; the note row under the header
+            continue
         if _is_blank(price) or match_key(price) == "range":
             if match_key(name) in SECTIONS:
                 category = _section(name, sheet.title, number)
@@ -189,20 +127,12 @@ def _read_goods(sheet):
 
 
 def _read_clothing(sheet):
-    """Clothing Val: a section name in column A, then item rows with the name
-    in B and retail in C. Column D, "Used (75%)", is not read: every clothing
-    item is valued used at 75% (decision of 27 October 2026), and a used
-    value that differs is corrected per line on the review screen, not
-    imported. Text in column A above the
-    first section is the sheet's title ("FOCUS North America", "FY 2025").
-    After it, any heading must be a known section: otherwise its rows would
-    quietly be filed under the section before it."""
     rows = []
     category = None
     for number, (heading, name, retail) in _cells(sheet, 3):
         if not _is_blank(name):
             if category is None:
-                continue  # the column headings above the first section
+                continue
             rows.append(SourceRow(
                 sheet=sheet.title, row=number, category=category, name=tidy(name),
                 new_cell=retail, used_rate=CLOTHING_USED_RATE,
@@ -211,18 +141,14 @@ def _read_clothing(sheet):
             if match_key(heading) in SECTIONS:
                 category = _section(heading, sheet.title, number)
             elif category is not None:
-                _section(heading, sheet.title, number)  # raises, naming it
+                _section(heading, sheet.title, number)
     return rows
 
-
-# --- Reading a cell ------------------------------------------------------------
 
 PENNY = Decimal("0.01")
 
 
 def as_money(value):
-    """A cell as dollars, or None if it isn't a plain number. Text that is
-    only a number with a $ ("$12", "12.50") counts; a range or a word doesn't."""
     if isinstance(value, bool) or value is None:
         return None
     if isinstance(value, (int, float, Decimal)):
@@ -242,14 +168,6 @@ def as_money(value):
     return amount.quantize(PENNY, rounding=ROUND_HALF_UP)
 
 
-# --- The reviewed tables ---------------------------------------------------------
-#
-# Every entry below was written by a person reading the workbook next to the
-# catalog, and is shown in the dry run for approval. If the workbook gains a
-# row that none of them covers, the dry run lists it and --apply refuses.
-
-# Same item, different spelling: the catalog's name was tidied when it was
-# typed in. (category, name as in the workbook) -> name in the catalog.
 ALIASES = {
     ("baby_essentials", "Baby Wash/Shampoo (2-in-1) (13-27oz)"): "Baby Wash/Shampoo 2-in-1 (13-27oz)",
     ("baby_essentials", "Formula (7-oz Similac )"): "Formula - Similac 7oz",
@@ -279,11 +197,6 @@ ALIASES = {
     ("baby_mom_items", "birb cloth 3pk"): "Bib Cloth 3pk",
 }
 
-# Items the catalog doesn't have yet: (category, name as in the workbook) ->
-# (name to give it, report bucket). The workbook has no bucket column, so
-# each bucket here is a proposal, following the catalog's existing items:
-# health and personal care -> hygiene, equipment and things for the home ->
-# household, anything worn -> clothing.
 NEW_ITEMS = {
     ("baby_essentials", "Suction"): ("Nasal Suction", "hygiene"),
     ("baby_essentials", "Thermometer"): ("Thermometer", "hygiene"),
@@ -320,16 +233,12 @@ NEW_ITEMS = {
     ("clothing_infant", "Sunglasses"): ("Sunglasses", "clothing"),
     ("clothing_infant", "Hair bows"): ("Hair Bows", "clothing"),
     ("clothing_infant", "Tights"): ("Tights", "clothing"),
-    # Listed under Infant clothing, but not clothing. Category stays where the
-    # workbook puts them (that's where the program director looks); the bucket follows
-    # what they are.
     ("clothing_infant", "washcloths"): ("Washcloths", "hygiene"),
     ("clothing_infant", "sipy cups"): ("Sippy Cups", "household"),
     ("clothing_infant", "headbands"): ("Headbands", "clothing"),
     ("clothing_infant", "loofah"): ("Loofah", "hygiene"),
 }
 
-# Decided in Phase 0 (PRODUCTION_DESIGN section 1), not in the workbook.
 DECIDED_ITEMS = (
     {
         "name": "Individual Diaper", "category": "diapers", "report_bucket": "diapers",
@@ -346,19 +255,14 @@ DECIDED_ITEMS = (
     },
 )
 
-# Decided changes to items that already exist.
 FORMULA_NOTE = ("Typed per receipt (decision 8b). Pre-filled with the "
                 "catalog price; change it to what the receipt says.")
-# Kept "type the price" even though the workbook shows a clean price: the
-# photo the catalog was typed from showed used values that aren't the item's
-# rate (decision of 27 October 2026). Catalog names.
 KEEP_MANUAL = {
     ("home_goods", "Small Rideable Toy Cars"),
     ("home_goods", "Big Rideable Toy Cars"),
     ("baby_mom_items", "Crib Wind Chime"),
 }
 DISPLAY_GROUPS = {
-    # Hygiene money, listed with the diapers on the monthly report (decision 9).
     ("baby_essentials", "Individual Pack of Wipes"): "diapers",
 }
 
@@ -373,26 +277,15 @@ _DISPLAY_GROUPS = _keyed(DISPLAY_GROUPS)
 _KEEP_MANUAL = {(category, match_key(name)) for category, name in KEEP_MANUAL}
 
 
-# --- Planning --------------------------------------------------------------------
-
-
 @dataclasses.dataclass
 class Reading:
-    """What one workbook row says about an item's price."""
 
-    price: object        # Decimal, or None if the row gives no usable price
-    price_entry: str     # "fixed" or "manual"
-    reason: object       # why it's manual (str), or None
+    price: object
+    price_entry: str
+    reason: object
 
 
 def read_price(row):
-    """Interpret a row's price cells. Never guesses: anything that isn't a
-    clear price comes back manual, with why.
-
-    Where "$ Received" is filled in, one item's price is $ Received divided
-    by Quantity (a blank quantity means one). That replaces the "price new"
-    column for the row, and the used rate then applies on top as usual.
-    """
     new = as_money(row.new_cell)
     if not _is_blank(row.received_cell):
         return _per_item_received(row, new)
@@ -433,8 +326,6 @@ def _per_item_received(row, new):
 
     per_item = (received / quantity).quantize(PENNY, rounding=ROUND_HALF_UP)
     if new is None:
-        # The per-item price is clear, but "price new" is a range or text:
-        # that says the item varies, so it's typed each time, pre-filled.
         return Reading(per_item, "manual", (
             f"{_why_not_a_price(row)} Pre-filled at ${per_item}, its "
             f"\"$ Received\" per item (${received} for {quantity})."
@@ -461,11 +352,10 @@ class NewItem:
 
 @dataclasses.dataclass
 class Change:
-    """One field of one existing item changing."""
 
     item_id: int
     item_label: str
-    field: str           # "unit_price_new" means a new price row
+    field: str
     old: object
     new: object
     why: str
@@ -476,8 +366,8 @@ class Plan:
     new_items: list
     price_changes: list
     other_changes: list
-    unmatched_rows: list     # workbook rows no table covers: block --apply
-    left_alone: list         # catalog items the workbook doesn't list
+    unmatched_rows: list
+    left_alone: list
     skipped_sheets: dict
 
     @property
@@ -490,7 +380,6 @@ class Plan:
 
     @property
     def manual_items(self):
-        """Everything the plan leaves needing a typed price, with why."""
         listed = [(f"{n.name} · {n.category}", n.note) for n in self.new_items
                   if n.price_entry == "manual"]
         listed += [(c.item_label, c.why) for c in self.other_changes
@@ -499,14 +388,8 @@ class Plan:
 
 
 def plan_import(rows, items):
-    """Compare workbook rows with the catalog. Pure: `items` is any list of
-    objects shaped like app.models.Item, and nothing is written.
-
-    Returns a Plan. Call apply_plan() to carry it out.
-    """
     by_key = {(item.category, match_key(item.name)): item for item in items}
 
-    # Which catalog item (or new item) each row is about.
     targets = {}
     unmatched = []
     for row in rows:
@@ -514,8 +397,6 @@ def plan_import(rows, items):
         if key in _ALIASES:
             key = (row.category, match_key(_ALIASES[key]))
         elif key in _NEW_ITEMS:
-            # Created by an earlier import, under its tidied name: it's an
-            # existing item now, or running the import twice would add it twice.
             created = (row.category, match_key(_NEW_ITEMS[key][0]))
             if created in by_key:
                 key = created
@@ -559,9 +440,6 @@ def plan_import(rows, items):
         if entry != item.price_entry:
             other_changes.append(Change(item.id, label, "price_entry",
                                         item.price_entry, entry, note or source))
-            # The note explains why a price is typed. Moving to "manual" sets
-            # the new reason; moving to "fixed" removes a reason that no
-            # longer applies. An item staying manual keeps its own note.
             new_note = note if entry == "manual" else None
             if new_note != item.note:
                 other_changes.append(Change(item.id, label, "note",
@@ -608,9 +486,6 @@ def plan_import(rows, items):
 
 
 def _reading_for(group):
-    """One row: read it. The same item listed more than once: manual, with
-    every listing in the note, because two prices for one item is a question
-    for the program director, not something to pick between."""
     if len(group) == 1:
         return read_price(group[0])
     def shown(r):
@@ -623,17 +498,7 @@ def _reading_for(group):
                    f"{listings}. May be different products.")
 
 
-# --- Applying --------------------------------------------------------------------
-
-
 def apply_plan(plan, effective_from):
-    """Carry out a Plan in one transaction. The caller sets who is doing it
-    (audit.acting_as) and commits; on any error, roll back and nothing at all
-    has changed.
-
-    Uses app.models only here, so plan_import() stays testable without a
-    database.
-    """
     from app.extensions import db
     from app.models import Item
     from app.services import audit
@@ -682,15 +547,11 @@ def apply_plan(plan, effective_from):
     db.session.flush()
 
 
-# --- Showing a plan --------------------------------------------------------------
-
-
 def _money(value):
     return "no price" if value is None else f"${value}"
 
 
 def describe(plan):
-    """The dry run, as lines of text for a person to read and approve."""
     lines = []
 
     def section(title, entries):

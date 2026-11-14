@@ -1,27 +1,3 @@
-"""Filling FOCUS's own monthly report Sheet (the client's request, 11 Nov 2026; D9-11).
-
-The Sheet's template tab ("Sheet1") is FOCUS's monthly format, empty: a band
-row, the headers, a rate row, 50 rows for sessions and a Totals row.
-Filling a period copies that tab and writes the app's numbers into the
-copy -- values, plus the date and dollar formats -- so the borders, colors,
-bands and widths are FOCUS's own, exactly.
-
-  * Rows: a row per approved session (date, service, its attendance), then
-    a row per kind of item under it, labelled in Description: the monthly
-    report's rows (reports.session_rows). The Totals row holds the app's
-    sums, never a formula.
-  * No names, anywhere (the client's decision): a session's Description is
-    left blank. A batch note can hold a mother's name, so it is never
-    written.
-  * The template's headers are checked first. If FOCUS changes its columns,
-    the fill is refused rather than writing numbers under the wrong heading.
-  * One batchUpdate: Google applies all of it or none of it.
-  * Filling a period again replaces its tab (the client's decision). Only the
-    tab with exactly that period's name is ever deleted; never the template.
-  * The service account is an Editor of this one Sheet and nothing else.
-    It needs the read-write Sheets scope, so this module asks for it; the
-    form sync keeps its read-only token.
-"""
 
 import datetime
 import json
@@ -38,15 +14,12 @@ SHEETS_API = "https://sheets.googleapis.com/v4/spreadsheets"
 REQUEST_TIMEOUT_SECONDS = 15
 DEFAULT_TEMPLATE_TAB = "Sheet1"
 
-# The template's layout, 1-based rows as Sheets shows them.
 HEADER_ROW = 2
 FIRST_DATA_ROW = 4
-TEMPLATE_DATA_ROWS = 50          # rows 4-53; row 54 is Totals
+TEMPLATE_DATA_ROWS = 50
 DATE_FORMAT = {"type": "DATE", "pattern": "m/d/yyyy"}
 MONEY_FORMAT = {"type": "CURRENCY", "pattern": "$#,##0.00"}
 
-# Columns A to V: the header FOCUS's template has, and what the app puts
-# under it (a reports.MONTHLY_COLUMNS key).
 COLUMNS = (
     ("Date", "date"),
     ("Service", "service"),
@@ -80,24 +53,19 @@ SHEETS_EPOCH = datetime.date(1899, 12, 30)
 
 
 class ReportSheetError(Exception):
-    """The fill can't run. The message says what to fix and holds no data."""
-
-
-# --- The rows -----------------------------------------------------------------------------
+    pass
 
 
 def sheet_rows(start, end):
-    """([row as a list of 22 values or None], totals {key: value}) for the
-    period. Session rows have no Description; item rows have only their label."""
     columns = [c for c in reports.MONTHLY_COLUMNS if c.key in KEYS]
     rows, _ = reports.session_rows(start, end, columns)
     out, totals = [], {}
     for row in rows:
         cells = dict(row.cells)
         if row.kind == "batch":
-            cells["description"] = None      # never the note: it can hold a name
+            cells["description"] = None
         elif not any(cells.get(key) for key in NUMBER_KEYS):
-            continue                         # e.g. bus passes: no column here
+            continue
         for key in NUMBER_KEYS:
             if cells.get(key):
                 totals[key] = totals.get(key, 0) + cells[key]
@@ -106,12 +74,7 @@ def sheet_rows(start, end):
 
 
 def tab_title(label):
-    """The new tab's name: the Totals page's label for the period, without
-    the characters Sheets refuses in a tab name."""
     return re.sub(r"[\[\]*?/\\:]", "-", label)[:100]
-
-
-# --- The requests -------------------------------------------------------------------------
 
 
 def _cell(value):
@@ -134,7 +97,6 @@ def _format(sheet_id, column, first_row0, end_row0, number_format):
 
 
 def build_requests(rows, totals, template_id, new_id, title, replace_id=None):
-    """The one batchUpdate that makes the period's tab."""
     requests = []
     if replace_id is not None:
         requests.append({"deleteSheet": {"sheetId": replace_id}})
@@ -144,7 +106,6 @@ def build_requests(rows, totals, template_id, new_id, title, replace_id=None):
     extra = max(0, len(rows) - TEMPLATE_DATA_ROWS)
     totals0 = first0 + TEMPLATE_DATA_ROWS + extra
     if extra:
-        # New rows above Totals, formatted like the row before them.
         requests.append({"insertDimension": {
             "range": {"sheetId": new_id, "dimension": "ROWS",
                       "startIndex": first0 + TEMPLATE_DATA_ROWS, "endIndex": totals0},
@@ -164,9 +125,6 @@ def build_requests(rows, totals, template_id, new_id, title, replace_id=None):
     return requests
 
 
-# --- The fill -----------------------------------------------------------------------------
-
-
 def _tidy(text):
     return re.sub(r"[^a-z0-9]+", " ", str(text).lower()).strip()
 
@@ -184,8 +142,7 @@ def check_headers(headers):
 
 
 def fill(target, start, end, label):
-    """Make (or remake) the period's tab. Returns the tab's link."""
-    tabs = target.tabs()                      # {title: sheetId}
+    tabs = target.tabs()
     by_lower = {title.lower(): title for title in tabs}
     template = by_lower.get(target.template_tab.lower())
     if template is None:
@@ -215,11 +172,7 @@ def _new_sheet_id(taken):
             return candidate
 
 
-# --- Google -------------------------------------------------------------------------------
-
-
 class GoogleReportSheet:
-    """The real Sheet, written with the service account's read-write token."""
 
     def __init__(self, sheet_id, template_tab, credentials_info):
         self.sheet_id = sheet_id
@@ -285,7 +238,6 @@ def _raise_for(response, account):
 
 
 def configured_target(config):
-    """The report Sheet from the app's settings, or None if not set up."""
     sheet_id = config.get("REPORT_SHEET_ID")
     raw_key = config.get("GOOGLE_SERVICE_ACCOUNT_JSON")
     if not sheet_id or not raw_key:

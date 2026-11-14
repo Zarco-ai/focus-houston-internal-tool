@@ -1,23 +1,4 @@
 #!/usr/bin/env python3
-"""Generate a batch of card numbers for mothers.
-
-    python generate_cards.py              200 new numbers (the default)
-    python generate_cards.py --count 100  a different amount
-
-Writes two files into instance/card_lists/ (git ignores instance/):
-
-    cards-batch-N.csv         the list the app loads (Phase 5). Numbers only.
-    cards-batch-N-print.html  open in a browser and print. One row per
-                              number with blank columns for the mother's name
-                              and the date it was given out.
-
-Every earlier batch in that folder is read first, so a new batch never reuses
-a number. Nothing is ever overwritten.
-
-The printed sheet is the ONLY place a mother's name and her number meet. It
-is handwritten, kept locked in the office, and never typed into the app,
-photographed, or scanned. See app/services/card_numbers.py for the format.
-"""
 
 import argparse
 import csv
@@ -32,14 +13,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OUTPUT_DIR = os.path.join(HERE, "instance", "card_lists")
 ROWS_PER_PAGE = 25
 
-# The clock module (Phase 1) does not exist yet. This is a local command run
-# on a laptop, but it still asks for Houston's date explicitly rather than
-# trusting whatever zone the machine is set to.
 HOUSTON = ZoneInfo("America/Chicago")
 
 
 def existing_batches():
-    """[(batch_number, [codes...]), ...] for every batch already written."""
     found = []
     if not os.path.isdir(OUTPUT_DIR):
         return found

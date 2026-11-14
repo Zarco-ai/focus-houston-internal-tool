@@ -1,11 +1,3 @@
-/* FOCUS Houston — distribution logging
- *
- * Plain CSS, no framework, mobile first. Every rule that only applies to
- * bigger screens is inside a media query at the bottom of its section.
- *
- * The one hard rule: anything The Center Director taps while standing up is at least
- * 44x44 pixels. That is the --tap variable, and it is not negotiable.
- */
 
 :root {
   --tap: 44px;
@@ -34,10 +26,6 @@
 
 * { box-sizing: border-box; }
 
-/* The browser hides [hidden] elements with `display: none`, but any of our own
- * `display: flex` / `display: block` rules below would win over it and show
- * them again. This puts hidden back on top, everywhere. Without it the keypad
- * and the custom item form appear on page load. */
 [hidden] { display: none !important; }
 
 body {
@@ -49,23 +37,17 @@ body {
         Helvetica, Arial, sans-serif;
   -webkit-text-size-adjust: 100%;
 
-  /* A column that always fills the window. This is what lets the running-total
-   * bar sit at the bottom of a short page and still be pushed down by a long
-   * one -- see .batch-footer. */
-  min-height: 100vh;
+    min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
 
-/* Takes up whatever height is left, so the footer is never floating in the
-   middle of a half-empty screen. */
 main { flex: 1 0 auto; }
 
 body.modal-open { overflow: hidden; }
 
 a { color: var(--brand); }
 
-/* --- Top bar -------------------------------------------------------------- */
 
 .topbar {
   display: flex;
@@ -99,13 +81,9 @@ a { color: var(--brand); }
 
 .topbar-nav a:hover { background: rgba(255, 255, 255, 0.15); }
 
-/* --- Page shell ----------------------------------------------------------- */
 
 .page { padding: var(--gap); max-width: 900px; margin: 0 auto; }
 
-/* Just breathing room under the last item. The running-total bar takes up its
-   own space now (see .batch-footer), so this no longer has to guess at the
-   bar's height. */
 .entry-page { padding-bottom: 20px; }
 
 h1 { font-size: 22px; margin: 0 0 4px; }
@@ -113,7 +91,6 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
 
 .subtle { color: var(--ink-soft); font-size: 14px; }
 
-/* --- Flash messages and banners ------------------------------------------- */
 
 .flashes { padding: var(--gap) var(--gap) 0; max-width: 900px; margin: 0 auto; }
 
@@ -128,7 +105,6 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
 .flash-error, .banner-error { background: var(--bad-bg); color: var(--bad); }
 .flash-warn, .banner-warn { background: var(--warn-bg); color: var(--warn); }
 
-/* --- Buttons -------------------------------------------------------------- */
 
 .btn {
   display: inline-flex;
@@ -155,12 +131,9 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
 .btn-block { width: 100%; }
 .btn-big { min-height: 60px; font-size: 18px; }
 
-/* A button that carries a second line under its label, e.g. "Keep counting"
-   over "12 items so far". Stacks because .btn is a row by default. */
 .btn-stack { flex-direction: column; gap: 2px; line-height: 1.2; }
 .btn-sub { font-size: 13px; font-weight: 500; opacity: 0.85; }
 
-/* --- Entry screen: header controls ---------------------------------------- */
 
 .entry-controls {
   position: sticky;
@@ -191,8 +164,7 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--paper);
-  font-size: 16px; /* 16px stops iOS zooming in when the field is focused */
-  color: var(--ink);
+  font-size: 16px;   color: var(--ink);
 }
 
 .search-bar { position: relative; }
@@ -210,7 +182,6 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
   cursor: pointer;
 }
 
-/* --- Entry screen: categories --------------------------------------------- */
 
 .category {
   background: var(--paper);
@@ -234,7 +205,6 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
 
 .category-header::-webkit-details-marker { display: none; }
 
-/* The little triangle, drawn rather than relying on the browser's default. */
 .category-header::before {
   content: "";
   width: 0;
@@ -263,7 +233,6 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
 
 .category-items { border-top: 1px solid var(--line); }
 
-/* --- Entry screen: one item ----------------------------------------------- */
 
 .item-row {
   padding: 10px 14px;
@@ -285,7 +254,6 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
 
 .item-name { font-weight: 600; font-size: 15px; }
 
-/* Names repeat across categories, so the category suffix is never optional. */
 .item-cat { color: var(--ink-soft); font-weight: 400; font-size: 14px; }
 
 .item-price { color: var(--ink-soft); font-size: 14px; white-space: nowrap; }
@@ -302,9 +270,6 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
 .tag-confirm { background: var(--warn-bg); color: var(--warn); }
 .tag-review { background: var(--warn-bg); color: var(--warn); }
 
-/* A dot, then the label -- the flag on an approved batch that still owes a
-   value. The dot is drawn rather than typed so it picks up the tag's own colour
-   and cannot be selected or copied as text. */
 .tag-flag {
   display: inline-flex;
   align-items: center;
@@ -328,7 +293,6 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
   flex-wrap: wrap;
 }
 
-/* New / Used */
 
 .condition-toggle {
   display: inline-flex;
@@ -352,7 +316,6 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
 
 .condition-toggle button.on { background: var(--brand); color: #fff; }
 
-/* Quantity stepper */
 
 .stepper {
   display: inline-flex;
@@ -376,7 +339,6 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
 
 .step:active { background: #e9eef3; }
 
-/* The quantity is a button: tapping it opens the keypad. */
 .qty {
   min-width: 56px;
   height: var(--tap);
@@ -399,8 +361,6 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
   font-size: 15px;
 }
 
-/* "also 2 used" -- what is counted on the side the toggle is not showing.
-   Tapping it switches to that side. */
 
 .other-condition {
   display: block;
@@ -417,7 +377,6 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
 
 .other-condition:hover { border-color: var(--brand); color: var(--brand); }
 
-/* Manual price box */
 
 .price-box {
   margin-top: 8px;
@@ -447,16 +406,12 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
   line-height: 1.4;
 }
 
-/* Says which condition the typed price belongs to, because new and used each
-   carry their own. */
 .price-scope {
   margin: 6px 0 0;
   font-size: 12px;
   color: var(--warn);
 }
 
-/* The same item recorded again at a different value -- one stroller at $40 and
-   another at $300. Each is its own line with its own quantity and price. */
 .price-group {
   display: flex;
   align-items: center;
@@ -516,16 +471,7 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
   cursor: pointer;
 }
 
-/* --- Sticky batch footer -------------------------------------------------- */
 
-/* Sticky, NOT fixed.
- *
- * A fixed bar is lifted out of the page and floats over it, so whatever is at
- * the bottom of the list ends up underneath it and no amount of padding
- * reliably rescues it. A sticky bar stays pinned to the bottom of the screen
- * while there is still list below it, and then comes to rest at the end of the
- * page -- so the "Add item not on this list" button is always reachable, at
- * any window size, with any number of categories open. */
 .batch-footer {
   position: sticky;
   bottom: 0;
@@ -544,7 +490,6 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
 .footer-totals strong { font-variant-numeric: tabular-nums; }
 .footer-sep { color: var(--ink-faint); margin: 0 4px; }
 
-/* --- Modals --------------------------------------------------------------- */
 
 .modal {
   position: fixed;
@@ -578,7 +523,6 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
 
 .modal-actions .btn, .keypad-actions .btn { flex: 1; }
 
-/* Keypad */
 
 .keypad-item {
   margin: 0 0 6px;
@@ -617,7 +561,6 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
 .key:active { background: #e4e6ea; }
 .key-wide { font-size: 20px; color: var(--ink-soft); }
 
-/* --- Forms ---------------------------------------------------------------- */
 
 .field { display: block; margin-bottom: 12px; }
 .field > span { display: block; font-size: 14px; font-weight: 600; margin-bottom: 4px; }
@@ -637,7 +580,6 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
 .field-row { display: flex; gap: 10px; }
 .field-row .field { flex: 1; }
 
-/* --- Cards and lists ------------------------------------------------------ */
 
 .card {
   background: var(--paper);
@@ -676,9 +618,7 @@ h2 { font-size: 18px; margin: 20px 0 8px; }
 .stat-label { font-size: 13px; color: var(--ink-soft); }
 .stat-value { font-size: 24px; font-weight: 700; font-variant-numeric: tabular-nums; }
 
-/* --- Tables --------------------------------------------------------------- */
 
-/* Wide tables scroll inside their own box so the page never scrolls sideways. */
 .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 
 table {
@@ -700,7 +640,6 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 tr.total-row td { font-weight: 700; border-top: 2px solid var(--ink); }
 tr.flagged td { background: var(--warn-bg); }
 
-/* --- Bigger screens ------------------------------------------------------- */
 
 @media (min-width: 700px) {
   .page { padding: 20px; }
@@ -708,9 +647,7 @@ tr.flagged td { background: var(--warn-bg); }
   .modal { align-items: center; }
   .item-top { margin-bottom: 4px; }
 
-  /* Centred to match the page, using margins rather than transforms -- a
-     transform would break the sticky positioning. */
-  .batch-footer {
+    .batch-footer {
     width: 100%;
     max-width: 900px;
     margin: 0 auto;
@@ -720,7 +657,6 @@ tr.flagged td { background: var(--warn-bg); }
   }
 }
 
-/* --- Signing in (Phase 2) ------------------------------------------------ */
 
 .signed-in-bar {
   display: flex;
@@ -748,9 +684,7 @@ tr.flagged td { background: var(--warn-bg); }
 .row-inactive td { color: var(--ink-faint); }
 .remove-form { display: flex; align-items: center; gap: 8px; margin: 0; }
 
-/* --- Forms used by the admin pages (Phase 4) ------------------------------ */
 
-/* A row whose button lines up with the bottom of the input beside it. */
 .field-row-end { align-items: flex-end; }
 .field-row-end .btn { margin-bottom: 12px; }
 
@@ -792,7 +726,6 @@ tr.flagged td { background: var(--warn-bg); }
 .metric-switch input { width: 22px; height: 22px; }
 .metric-label { flex: 1; margin: 0; }
 
-/* The attendance boxes on the review screen, in their report groups. */
 .count-section { border: 0; padding: 0; margin: 0 0 8px; }
 .count-section legend { font-weight: 700; font-size: 15px; padding: 0; margin-bottom: 6px; }
 .count-grid { display: grid; grid-template-columns: 1fr; gap: 0 12px; }
@@ -802,10 +735,7 @@ tr.flagged td { background: var(--warn-bg); }
 .count-list dt { color: var(--ink-soft); }
 .count-list dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
 
-/* --- The Totals report (Phase 4) ----------------------------------------- */
 
-/* The coloured bands of the FOCUS North America template. Text stays dark
-   ink on every band, so contrast holds whatever the band colour. */
 .band-served        { --band: #e3eaf2; }
 .band-food          { --band: #b7e1cd; }
 .band-occupation    { --band: #cfe2f3; }
@@ -875,10 +805,7 @@ h2.band {
   .report-band { display: flex; align-items: center; justify-content: center; text-align: center; }
 }
 
-/* --- Printing ------------------------------------------------------------- */
 
-/* Totals prints as the report: no navigation, no forms, no buttons, and the
-   band colours kept (browsers drop backgrounds when printing unless told). */
 @media print {
   @page { margin: 14mm; }
 
@@ -905,7 +832,6 @@ h2.band {
   .table-scroll { overflow: visible; }
 }
 
-/* --- Intake (Phase 5) ------------------------------------------------------ */
 
 .intake-banner {
   display: flex;
@@ -914,8 +840,7 @@ h2.band {
   gap: 10px;
   flex-wrap: wrap;
   min-height: var(--tap);
-  /* The body is a flex column, so without a width this shrinks to its text. */
-  width: calc(100% - 2 * var(--gap));
+    width: calc(100% - 2 * var(--gap));
   max-width: calc(900px - 2 * var(--gap));
   margin: 8px auto 0;
   padding: 8px 14px;
@@ -954,22 +879,17 @@ h2.band {
   .intake-banner { display: none !important; }
 }
 
-/* --- Responses (Phase 6) ---------------------------------------------------- */
 
 .review-reasons { margin: 8px 0; padding-left: 20px; font-size: 14px; }
 .review-quote { font-style: italic; margin: 0 0 8px; }
 .inline-form select { min-height: var(--tap); padding: 8px; border: 1px solid var(--line); border-radius: 8px; font-size: 16px; }
 
-/* --- Program Health (Phase 7) ----------------------------------------------- */
 
 .band-program_health { --band: #d0e0e3; }
-/* The counts behind a rate: shown in print too, unlike the source line. */
 .report-detail { display: block; font-weight: 400; font-size: 13px; color: var(--ink); margin-top: 2px; }
 @media print { .report-detail { font-size: 10px; } }
 
-/* --- Reports (Phase 8) -------------------------------------------------------- */
 
-/* The report tables are wide; let them use the window on a big screen. */
 .page-wide { max-width: 1400px; }
 .report-sheet th { white-space: normal; vertical-align: bottom; min-width: 7em; background: var(--band, var(--page)); color: var(--ink); }
 .report-sheet td { font-size: 13px; }
@@ -981,8 +901,7 @@ h2.band {
 @media print {
   .report-sheet th, .report-sheet { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .report-sheet td, .report-sheet th { font-size: 8px; padding: 2px 3px; min-width: 0; }
-  /* Only the wide report pages print sideways (a named page). */
-  .page-wide { page: wide; }
+    .page-wide { page: wide; }
   @page wide { size: landscape; }
 }
 .date-form { margin: 4px 0 10px; flex-wrap: wrap; }

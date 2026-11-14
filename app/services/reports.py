@@ -1,29 +1,3 @@
-"""The monthly and annual reports, as grids.
-
-A report is built once, as plain rows and cells, and then drawn as a
-table on screen, as the payload of a filed snapshot
-(app/services/snapshots.py) and, for the monthly rows, into FOCUS's report
-Sheet (app/services/report_sheet.py). Because all of them come from the
-same grid -- and the grid from the same functions as the Totals page --
-they can't disagree.
-
-Every number is a value worked out by the app, never a spreadsheet
-formula: the program director's 2026 sheet broke because its formulas did (#REF!, a
-total that skipped a column). A test checks the monthly totals row equals
-the Totals page's numbers.
-
-  Monthly   the program director's monthly sheet: one row per approved batch (date,
-            service, description, its attendance counts), item sub-rows
-            under it by display group, a rate row read from today's
-            catalog prices, a totals row, and notes.
-
-  Annual    The FOCUS North America template: every switched-on metric
-            down the left in its group, a column per month, and a year
-            column. The year column is worked out over the WHOLE YEAR,
-            not by adding the months: unique clients would count a mother
-            once per month (finding F7), and adding twelve percentages
-            means nothing.
-"""
 
 import datetime
 from dataclasses import dataclass, field
@@ -50,21 +24,16 @@ NOTES_TEXT = ("Anything outside the categories above (an Amazon wish-list item, 
               "counted next time.")
 
 
-# --- Monthly ------------------------------------------------------------------------------
-
-
 @dataclass(frozen=True)
 class Column:
-    key: str           # a metric key, or date / service / description
-    group: str = ""    # its band (a metrics group key)
+    key: str
+    group: str = ""
     unit: str = metrics.UNIT_COUNT
-    attendance: str = ""   # the attendance field a batch row reads, if any
+    attendance: str = ""
 
 
 FIXED = (Column("date"), Column("service"), Column("description"))
 
-# The program director's columns in her order, with the template's other per-event
-# rows placed in their bands.
 MONTHLY_COLUMNS = FIXED + (
     Column("individuals_served", "SERVED", attendance="individuals_served"),
     Column("children_served", "SERVED", attendance="children_served"),
@@ -96,7 +65,6 @@ MONTHLY_COLUMNS = FIXED + (
 
 GOODS_BUCKETS = (BUCKET_CLOTHING, BUCKET_HYGIENE, BUCKET_HOUSEHOLD)
 
-# The sub-row names on the program director's sheet, by display group.
 GROUP_LABELS = {
     BUCKET_DIAPERS: "Diapers",
     BUCKET_HYGIENE: "Hygiene",
@@ -111,8 +79,6 @@ GROUP_ORDER = (BUCKET_DIAPERS, BUCKET_HYGIENE, BUCKET_CLOTHING, BUCKET_HOUSEHOLD
 
 
 def _add_line(cells, line):
-    """Put one line's quantity and value in the columns its bucket feeds.
-    Exactly the same routing as the Totals page's metrics."""
     bucket = line.report_bucket
     quantity = line.quantity
     value = line.computed_value or ZERO
@@ -140,7 +106,7 @@ def _add_line(cells, line):
 
 @dataclass
 class Row:
-    kind: str                     # "batch", "item", "totals"
+    kind: str
     cells: dict = field(default_factory=dict)
     batch_id: int = None
 
@@ -150,7 +116,7 @@ class MonthlyReport:
     year: int
     month: int
     columns: list
-    labels: dict                  # column key -> header text
+    labels: dict
     rows: list
     totals: dict
     rate_text: str
@@ -177,14 +143,10 @@ def _labels():
 
 
 def _description(batch):
-    """Blank. The batch note can hold a mother's name, so no report shows it
-    (the client's decision, 11 Nov 2026; it was the note until then)."""
     return ""
 
 
 def rate_text():
-    """The rate row, read from today's catalog -- never typed (answer 8a):
-    every active, priced item listed with the diapers."""
     items = [i for i in Item.query.filter_by(active=True).all()
              if i.report_group == BUCKET_DIAPERS and i.current_price() is not None]
     items.sort(key=lambda i: (i.report_bucket != BUCKET_DIAPERS, i.name))
@@ -215,8 +177,6 @@ def monthly(year, month):
 
 
 def session_rows(start, end, columns):
-    """([Row], [note]) for start..end: a row per approved batch, then its
-    item sub-rows. Shared with the report Sheet (app/services/report_sheet.py)."""
     rows, notes = [], []
     for batch in totals.committed_batches(start, end):
         batch_row = Row("batch", batch_id=batch.id, cells={
@@ -253,17 +213,14 @@ def session_rows(start, end, columns):
     return rows, notes
 
 
-# --- Annual -------------------------------------------------------------------------------
-
-
 @dataclass
 class AnnualRow:
     key: str
     label: str
     unit: str
     frequency: str
-    months: list          # 12 values (None where not applicable)
-    year: object          # worked out over the whole year
+    months: list
+    year: object
 
 
 @dataclass
@@ -307,22 +264,15 @@ def annual(year):
 
 
 def is_additive(row):
-    """True if the year is the plain sum of the months: counts and money
-    that are added up. Not for unique clients, rates, averages, or the
-    figures typed once a year."""
     return (row.frequency == metrics.MONTHLY
             and row.unit in (metrics.UNIT_COUNT, metrics.UNIT_MONEY, metrics.UNIT_HOURS)
             and row.key not in NOT_ADDITIVE)
 
 
-# Unique clients counts each mother once a year, not once a month; total
-# intake hours is rounded to a tenth each month, so twelve roundings
-# needn't add up to the year's one.
 NOT_ADDITIVE = {"unique_clients_distinct", "intake_hours_total"}
 
 
 def as_text(value, unit):
-    """A value as the screen and the snapshot show it."""
     if value is None:
         return "n/a" if unit == metrics.UNIT_PERCENT else "—"
     if unit == metrics.UNIT_MONEY:
@@ -334,4 +284,3 @@ def as_text(value, unit):
     if isinstance(value, int):
         return f"{value:,}"
     return str(value)
-

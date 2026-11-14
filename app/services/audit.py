@@ -1,22 +1,3 @@
-"""Writing to the audit log.
-
-Call record_change() whenever something that has already been committed gets
-edited, and whenever the catalog changes. Draft batches are not audited --
-they are still being written, and logging every tap of the + button would bury
-the changes that matter. record_event() is for things that are not a field
-changing, like a sign-in.
-
-Every row records WHO. That person comes from `current_actor`, which is set
-once per request by the sign-in guard (app/auth.py), and by a command or a
-test with acting_as(). Services never take a `user` argument and never
-import Flask: the actor travels with the request instead of through every
-function signature.
-
-Writing a row with no actor is refused -- unless it is something the app
-does by itself (a scheduled sync, creating an admin from ADMIN_EMAILS). A
-change nobody can be held to account for is exactly what the log exists to
-prevent.
-"""
 
 import contextlib
 import contextvars
@@ -31,22 +12,15 @@ from app.models.audit import (
     SYSTEM_ACTIONS,
 )
 
-# The id of the person making changes right now, or None. A ContextVar rather
-# than a plain global because gunicorn serves several requests at once on
-# separate threads, and each must see only its own user.
 current_actor = contextvars.ContextVar("current_actor", default=None)
 
 
 class NoActor(RuntimeError):
-    """An audited change was attempted with nobody signed in."""
+    pass
 
 
 @contextlib.contextmanager
 def acting_as(user_id):
-    """Make changes as this user for the length of a `with` block.
-
-    For commands and tests. Requests get their actor from the sign-in guard.
-    """
     token = current_actor.set(user_id)
     try:
         yield
@@ -65,7 +39,6 @@ def _actor_for(action):
 
 
 def _as_text(value):
-    """Everything in the log is stored as readable text."""
     if value is None:
         return None
     if isinstance(value, bool):
@@ -75,7 +48,6 @@ def _as_text(value):
 
 def record_change(table_name, record_id, field, old_value, new_value,
                   description=None, action=ACTION_UPDATE):
-    """Log one field changing on one record. Returns None if nothing moved."""
     if action not in ACTIONS:
         raise ValueError(f"Unknown audit action: {action!r}")
 
@@ -100,8 +72,6 @@ def record_change(table_name, record_id, field, old_value, new_value,
 
 
 def record_event(action, table_name, record_id, description, field="event"):
-    """Log something that happened rather than a field that changed -- a
-    sign-in, an export. Always written, even though nothing "moved"."""
     if action not in ACTIONS:
         raise ValueError(f"Unknown audit action: {action!r}")
 
@@ -121,10 +91,6 @@ def record_event(action, table_name, record_id, description, field="event"):
 
 def apply_change(record, field, new_value, table_name, description=None,
                  action=ACTION_UPDATE):
-    """Set a field on a record and log the change in one step.
-
-    Returns True if the value actually changed.
-    """
     old_value = getattr(record, field)
     entry = record_change(
         table_name=table_name,
@@ -142,7 +108,6 @@ def apply_change(record, field, new_value, table_name, description=None,
 
 
 def history_for(table_name, record_id):
-    """Every logged change to one record, newest first."""
     return (
         AuditLog.query.filter_by(table_name=table_name, record_id=record_id)
         .order_by(AuditLog.changed_at.desc(), AuditLog.id.desc())
@@ -151,8 +116,6 @@ def history_for(table_name, record_id):
 
 
 def recent_changes_for_table(table_name, limit=50):
-    """Newest-first changes to one kind of record -- e.g. every user change,
-    for the Users & Access page."""
     return (
         AuditLog.query.filter_by(table_name=table_name)
         .order_by(AuditLog.changed_at.desc(), AuditLog.id.desc())

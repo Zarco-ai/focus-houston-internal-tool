@@ -1,8 +1,3 @@
-"""Importing earlier months from the sheets (decided 2 Nov 2026: as recorded).
-
-A small made-up history file stands in for the real one, which holds
-FOCUS's data and is never committed.
-"""
 
 import datetime
 import io
@@ -55,12 +50,12 @@ def test_every_count_and_dollar_lands_as_recorded(seeded_app):
 
     values = metrics.values(D(2026, 1, 1), D(2026, 1, 31))
     assert values["diapers_count"] == 479 + 180
-    assert values["diapers_value"] == Decimal("210.76")          # the $0 row stays $0
-    assert values["goods_count"] == 4 + 4 + 3                    # wipes counted as hygiene
+    assert values["diapers_value"] == Decimal("210.76")
+    assert values["goods_count"] == 4 + 4 + 3
     assert values["goods_value"] == Decimal("52.00")
     assert values["non_food_gik"] == Decimal("262.76")
     assert values["formula_containers"] == 1 and values["food_value"] == Decimal("39.94")
-    assert values["bus_passes_count"] == 1                       # never in Non-Food
+    assert values["bus_passes_count"] == 1
     assert values["individuals_served"] == 14
     assert values["volunteer_hours"] == Decimal("2.5")
 
@@ -131,12 +126,7 @@ def test_an_admin_uploads_it_and_staff_cannot(client, staff_client, seeded_app):
     assert totals.summary(D(2026, 1, 1), D(2026, 1, 31))["batches"]
 
 
-# --- Exporting every session (format version 2) -----------------------------------------------
-
-
 def reviewed_sheet():
-    """The sheet imported, then part of its review queue done: the car seat
-    sorted into a new catalog item. The $0.00 diapers are still waiting."""
     from app.services import review
 
     history.import_history(SHEET)
@@ -155,7 +145,6 @@ def snapshot():
 
 
 def start_again():
-    """Another copy of the app: no sessions yet."""
     for batch in Batch.query.all():
         db.session.delete(batch)
     db.session.commit()

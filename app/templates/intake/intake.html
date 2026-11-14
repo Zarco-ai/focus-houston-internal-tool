@@ -33,7 +33,6 @@
   </div>
 {% endif %}
 
-{# --- The timer ----------------------------------------------------------- #}
 
 <h2>Timer</h2>
 <div class="card timer-card">
@@ -50,9 +49,7 @@
         </div>
       </div>
       <div class="card-actions">
-        {# These buttons submit the survey form below to the timer's address,
-           so whatever has been typed travels with them and comes back. #}
-        {% if current.is_running %}
+                {% if current.is_running %}
           <button form="survey-form" formaction="{{ url_for('intake.pause', session_id=current.id) }}"
                   formnovalidate class="btn btn-quiet btn-big">Pause</button>
         {% elif current.is_paused %}
@@ -95,7 +92,6 @@
   </p>
 {% endif %}
 
-{# --- The survey ----------------------------------------------------------- #}
 
 <h2>Intake survey</h2>
 <form method="post" action="{{ url_for('intake.save_survey') }}" class="card survey-form"
@@ -199,7 +195,6 @@
   </p>
 </form>
 
-{# --- Waiting for someone ---------------------------------------------------- #}
 
 {% if flagged %}
   <h2>Times to check</h2>

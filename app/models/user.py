@@ -1,18 +1,3 @@
-"""The people allowed to sign in.
-
-  app_user  One row per email address on the allowlist. Sign-in itself is
-            done by Google -- there are no passwords here, ever. A Google
-            account whose email is not in this table, or whose row is not
-            active, is refused.
-
-Removing someone sets active = False. The row is never deleted: the audit
-log points at it (who corrected that batch?), and its existence is also what
-stops ADMIN_EMAILS from re-creating an admin who was deliberately removed --
-see app/services/users.py.
-
-These are staff and volunteers who run the app. Nothing about the mothers is
-stored here or anywhere else in the app by name.
-"""
 
 from sqlalchemy import CheckConstraint
 
@@ -33,8 +18,6 @@ class AppUser(db.Model):
     __tablename__ = "app_user"
     __table_args__ = (
         CheckConstraint("role IN ('admin', 'staff')", name="ck_app_user_role"),
-        # Emails are compared lowercased everywhere; storing them that way
-        # means the unique constraint really means "one row per person".
         CheckConstraint("email = lower(email)", name="ck_app_user_email_lowercase"),
     )
 
@@ -46,8 +29,6 @@ class AppUser(db.Model):
     created_at = db.Column(db.DateTime(timezone=True), nullable=False, default=clock.now_utc)
     last_login_at = db.Column(db.DateTime(timezone=True), nullable=True)
 
-    # Who put this person on the list. NULL for an admin created from the
-    # ADMIN_EMAILS environment variable on their first sign-in.
     added_by_id = db.Column(db.Integer, db.ForeignKey("app_user.id"), nullable=True)
     added_by = db.relationship("AppUser", remote_side=[id])
 

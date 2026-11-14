@@ -1,11 +1,3 @@
-"""Configuration: production must refuse to start without its secrets.
-
-On Render the disk is wiped at every restart. A production app that quietly
-generated its own signing key would sign everyone out each time it restarted
--- in the middle of a distribution day. So production takes SECRET_KEY and
-DATABASE_URL from the environment or does not start at all, and the message
-says what to fix.
-"""
 
 import pathlib
 
@@ -28,9 +20,6 @@ PROJECT_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 @pytest.fixture
 def production_env(monkeypatch):
-    """A clean environment: none of the variables production reads, except
-    the Google sign-in pair (tested on its own below), so each test can
-    remove exactly the one thing it is about."""
     for name in ("SECRET_KEY", "DATABASE_URL", "FOCUS_ENV", "ADMIN_EMAILS"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("GOOGLE_CLIENT_ID", "client-id.apps.googleusercontent.com")
@@ -39,8 +28,6 @@ def production_env(monkeypatch):
 
 
 def test_production_refuses_to_start_without_google_sign_in_credentials(production_env):
-    """Without them nobody could sign in. Better to refuse to start than to
-    come up looking healthy and lock everyone out."""
     production_env.setenv("SECRET_KEY", GOOD_KEY)
     production_env.setenv("DATABASE_URL", RENDER_STYLE_URL)
     production_env.delenv("GOOGLE_CLIENT_ID")
@@ -59,7 +46,6 @@ def test_production_session_cookie_is_secure_httponly_and_lax(production_env):
     assert app.config["SESSION_COOKIE_SECURE"] is True
     assert app.config["SESSION_COOKIE_HTTPONLY"] is True
     assert app.config["SESSION_COOKIE_SAMESITE"] == "Lax"
-    # The __Host- prefix makes the browser enforce Secure, no Domain, Path=/.
     assert app.config["SESSION_COOKIE_NAME"].startswith("__Host-")
     assert app.config["PERMANENT_SESSION_LIFETIME"].total_seconds() == 12 * 3600
     assert app.config["WTF_CSRF_TIME_LIMIT"] == 12 * 3600
@@ -107,9 +93,6 @@ def test_production_refuses_a_database_that_is_not_postgresql(production_env):
 
 
 def test_production_never_generates_or_reads_a_key_file(production_env):
-    """The instance-folder key is for laptops. On Render it would be a new
-    key every restart. The generator is booby-trapped: if production calls
-    it, this test fails."""
     import app as app_package
 
     def must_not_be_called(*args, **kwargs):
@@ -134,8 +117,6 @@ def test_production_uses_the_environment_database_with_tls(production_env):
 
 
 def test_production_is_the_default_when_focus_env_is_unset(production_env):
-    """Forgetting FOCUS_ENV on Render must fail safe: refuse to start, not
-    run with development fallbacks."""
     assert config_from_environment() is ProductionConfig
 
     production_env.setenv("FOCUS_ENV", "staging")
@@ -173,8 +154,6 @@ def test_tls_is_required_unless_the_url_already_says_otherwise():
 
 
 def test_the_schema_is_never_created_at_startup():
-    """Tables are made only by migrations, as a deploy step. create_all() on
-    startup would race the migrations and hide a missing one."""
     for path in sorted((PROJECT_ROOT / "app").rglob("*.py")):
         source = path.read_text(encoding="utf-8")
         assert ".create_all(" not in source, f"{path.relative_to(PROJECT_ROOT)} calls create_all()"

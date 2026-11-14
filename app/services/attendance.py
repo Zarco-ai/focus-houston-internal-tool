@@ -1,15 +1,3 @@
-"""Head counts and per-event figures typed on the review screen.
-
-FIELDS is the one list of them. The review form, the checks on what was
-typed, the audit log and the report rows all read it, so a new count is one
-column, one line here and one metric -- not five places to keep in step.
-
-Every field belongs to a metric (app/services/metrics.py). When an admin
-switches that metric off, its box disappears from the review screen and its
-row from Totals; what was already typed stays in the database untouched.
-
-Counts only. No field here holds a name, and none ever may.
-"""
 
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
@@ -18,9 +6,8 @@ from app.models.money import to_money
 
 KIND_COUNT = "count"
 KIND_MONEY = "money"
-KIND_HOURS = "hours"  # stored as whole tenths of an hour
+KIND_HOURS = "hours"
 
-# Sections of the review form, in order.
 SECTION_SERVED = "Served"
 SECTION_FOOD = "Food and occupation"
 SECTION_UNDERSTANDING = "Understanding"
@@ -34,20 +21,17 @@ SECTIONS = (
     SECTION_UNIQUE,
 )
 
-# The largest number any one box accepts. Far above anything a session can
-# produce, and well inside a 32-bit column; a typo of six extra zeros is
-# refused instead of stored.
 MAX_COUNT = 100_000
 MAX_MONEY = Decimal("100000.00")
 
 
 @dataclass(frozen=True)
 class Field:
-    name: str      # the attendance column
-    label: str     # the box on the review screen
+    name: str
+    label: str
     kind: str
     section: str
-    metric: str    # the metric that shows it, and switches it off
+    metric: str
     help: str = ""
 
 
@@ -89,13 +73,6 @@ FIELDS_BY_NAME = {field.name: field for field in FIELDS}
 
 
 def parse_value(field, raw):
-    """What was typed in one box, as the value to store. Blank is 0.
-
-    Raises ValueError with a sentence for the screen. Unlike a quantity on
-    the counting screen, nothing here is quietly clamped: these numbers go
-    to the funder as typed, so a "-3" or a "12.5 children" is refused and
-    shown back rather than turned into something nobody typed.
-    """
     text = "" if raw is None else str(raw).strip()
     if field.kind == KIND_MONEY:
         text = text.replace("$", "").replace(",", "")
@@ -124,8 +101,6 @@ def parse_value(field, raw):
             raise ValueError(f"{field.label}: ${number:,} is more than this app accepts.")
         return to_money(number)
 
-    # Hours, to a tenth: 2.5 is 25 tenths. 2.25 can't be stored exactly, so
-    # it is refused rather than rounded.
     tenths = number * 10
     if tenths != tenths.to_integral_value():
         raise ValueError(f"{field.label}: hours to one decimal place, like 2.5 (got '{text}').")
@@ -135,12 +110,6 @@ def parse_value(field, raw):
 
 
 def parse_form(form, fields):
-    """Read every box in `fields` from a submitted form.
-
-    Returns ({name: value}, [error sentences]). A field missing from the form
-    altogether is left out of the result, so it is left alone when saving --
-    that is what keeps a value typed before its metric was switched off.
-    """
     values, errors = {}, []
     for field in fields:
         if field.name not in form:
@@ -153,7 +122,6 @@ def parse_form(form, fields):
 
 
 def display_value(field, stored):
-    """A stored value as the review box shows it."""
     if field.kind == KIND_HOURS:
         return hours_from_tenths(stored)
     if field.kind == KIND_MONEY:
@@ -162,6 +130,5 @@ def display_value(field, stored):
 
 
 def hours_from_tenths(tenths):
-    """25 -> Decimal('2.5'). Whole hours show without the .0."""
     hours = Decimal(tenths or 0) / 10
     return hours.quantize(Decimal("1")) if hours == hours.to_integral_value() else hours

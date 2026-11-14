@@ -1,18 +1,3 @@
-"""Signing in with Google, and signing out.
-
-  /login           the sign-in page: one button
-  /login/google    sends the browser to Google, with a `state` and a `nonce`
-  /auth/callback   Google sends the browser back here. Authlib exchanges the
-                   one-time code for an ID token and checks it (signature
-                   against Google's keys, issuer, audience, expiry, nonce).
-                   Then app/services/users.py decides whether this person
-                   gets in.
-  /logout          POST only, with a CSRF token, so another site can't sign
-                   someone out with a link.
-
-No Google token is kept. The app reads the verified email once, at sign-in,
-and throws the rest away: it never acts on anyone's Google account.
-"""
 
 import logging
 
@@ -43,8 +28,6 @@ def google_configured():
 
 
 def register_google(app):
-    """Tell Authlib about Google. Only the `openid email` scopes: who you
-    are, nothing else -- no access to anyone's mail, files or calendar."""
     oauth.init_app(app)
     oauth.register(
         "google",
@@ -85,7 +68,6 @@ def callback():
     try:
         token = oauth.google.authorize_access_token()
     except OAuthError as error:
-        # error.error is a short code like "access_denied" -- safe to log.
         log.warning("Google sign-in did not complete: %s", error.error)
         flash("Sign-in didn't complete. Please try again.", "error")
         return redirect(url_for("auth.login"))
@@ -98,8 +80,6 @@ def callback():
             admin_emails=current_app.config.get("ADMIN_EMAILS", frozenset()),
         )
     except users.AccessDenied:
-        # Logged without the email: the log should not become a list of
-        # people who tried to get in.
         log.info("Refused a sign-in from an account that is not on the list.")
         end_session()
         return render_template(

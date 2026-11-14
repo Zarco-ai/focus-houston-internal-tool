@@ -1,4 +1,3 @@
-"""The Responses page and the admin pages behind it (Phase 6)."""
 
 import datetime
 import random
@@ -26,7 +25,6 @@ def cards(seeded_app, admin_user):
 
 @pytest.fixture
 def sheet(monkeypatch):
-    """Make the app think the sync is set up, reading a fake Sheet."""
     fake = FakeSheet()
     fake.service_account_email = "focus-sync@example.iam.gserviceaccount.com"
     monkeypatch.setattr(form_sync, "configured_source", lambda config: fake)

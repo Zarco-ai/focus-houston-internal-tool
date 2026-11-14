@@ -1,9 +1,3 @@
-"""One tiny key/value table for app settings.
-
-Right now it holds exactly one setting: which commit mode The Center Director is using.
-It exists as a table rather than a config constant because she needs to switch
-between the three modes during the demo and have the choice stick.
-"""
 
 from app.constants import COMMIT_MODE_PER_BATCH, COMMIT_MODES
 from app.extensions import db
@@ -38,8 +32,6 @@ def set_setting(key, value):
 
 def get_commit_mode():
     mode = get_setting(COMMIT_MODE_KEY, COMMIT_MODE_PER_BATCH)
-    # If someone edits the database by hand and puts nonsense in, fall back to
-    # the safe mode rather than breaking the entry screen.
     return mode if mode in COMMIT_MODES else COMMIT_MODE_PER_BATCH
 
 

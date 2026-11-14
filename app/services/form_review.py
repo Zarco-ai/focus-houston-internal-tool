@@ -1,29 +1,3 @@
-"""Matching form responses to mothers, and the review queue.
-
-A response whose card number belongs to a participant is a visit, recorded
-automatically. Everything else waits for a person -- the app never creates a
-mother from a form response on its own, because a typo would make a fake one.
-
-Why a response needs review is COMPUTED each time, from what it holds and
-what the app knows now: a participant created later, or a label mapped
-later, changes the answer without anyone editing the response. Only a
-person's decision is stored (decision, reviewed_by, reviewed_at).
-
-The three kinds of unknown number need different fixes, so the queue says
-which one it is (PRODUCTION_DESIGN 7.5):
-
-  invalid      fails the check digit -- almost always a typo. Match or discard.
-  unassigned   on a card list, but no participant yet -- she was handed a
-               card and her intake wasn't entered. Create her, match, discard.
-  not on list  well-formed, but on no card list. Match or discard.
-
-Also listed, though their visit is already recorded: a known number that
-answered "returning: no" (a borrowed card?), and a likely double
-submission (the same number within two minutes).
-
-Merging two numbers (a lost card) lives here too: it is how a reviewer
-fixes the "she has two numbers" case.
-"""
 
 import datetime
 from dataclasses import dataclass
@@ -70,7 +44,7 @@ KIND_TEXT = {
 
 
 class ReviewError(Exception):
-    """A review action can't be done. The message says why."""
+    pass
 
 
 def _actor():
@@ -86,9 +60,6 @@ def tidy_label(label):
 
 def code_of(response):
     return card_numbers.normalize(response.raw_id_text)
-
-
-# --- Visits -----------------------------------------------------------------------------
 
 
 def _service_type_id_for(label):
@@ -120,7 +91,6 @@ def _known_participant(response):
 
 
 def match_on_import(response):
-    """Called by the sync for each new response: a known number is a visit."""
     participant = _known_participant(response)
     if participant is not None:
         _record_visit(response, participant, DECISION_AUTO)
@@ -128,8 +98,6 @@ def match_on_import(response):
 
 
 def match_waiting_responses():
-    """Waiting responses whose number has since been given to someone (her
-    intake was entered after she filled in the form) become visits."""
     matched = 0
     for response in FormResponse.query.filter(FormResponse.decision.is_(None)):
         participant = _known_participant(response)
@@ -140,17 +108,7 @@ def match_waiting_responses():
     return matched
 
 
-# --- Why a response is in the queue -------------------------------------------------------
-
-
 class _Lookups:
-    """What reasons() needs to know, fetched in a few queries for a whole
-    list of responses instead of several queries per response.
-
-    Found by the Phase 9 stress test: with 903 responses to review, asking
-    the database about each one separately (is it on the list? is there an
-    earlier one within two minutes?) took the Responses page 10 seconds.
-    """
 
     def __init__(self, responses):
         self.listed = set()
@@ -190,15 +148,12 @@ def unknown_kind(response, lookups=None):
 
 
 def is_possible_duplicate(response, lookups=None):
-    """Another, earlier response with the same number within two minutes.
-    The earlier one stands; this one is the suspect."""
     if not code_of(response):
         return False
     return (lookups or _Lookups([response])).earlier_within_window(response)
 
 
 def reasons(response, lookups=None):
-    """Why this response is in front of a person, as kinds (see KIND_TEXT)."""
     if response.decision == DECISION_DISCARDED or response.reviewed_at is not None:
         return []
     lookups = lookups or _Lookups([response])
@@ -235,7 +190,6 @@ class ReviewItem:
 
 
 def review_queue():
-    """Everything a person needs to look at, oldest first."""
     candidates = FormResponse.query.filter(
         FormResponse.reviewed_at.is_(None),
         sa.or_(FormResponse.decision.is_(None), FormResponse.decision == DECISION_AUTO),
@@ -254,12 +208,7 @@ def recent_responses(limit=30):
                                        FormResponse.id.desc()).limit(limit).all()
 
 
-# --- A person's decisions -----------------------------------------------------------------
-
-
 def _decided(response, old, decision, note):
-    """Record who decided, and audit it. `old` is passed in because the
-    decision has usually been set on the response by the time this runs."""
     response.reviewed_by_id = _actor()
     response.reviewed_at = clock.now_utc()
     audit.record_change(table_name="form_response", record_id=response.id, field="decision",
@@ -269,8 +218,6 @@ def _decided(response, old, decision, note):
 
 
 def match(response, raw_code):
-    """She is a participant already; the number on the response was wrong.
-    The visit goes on the number the reviewer typed."""
     if response.decision is not None:
         raise ReviewError("This response has already been dealt with.")
     participant = participants.find_by_code(raw_code)
@@ -283,8 +230,6 @@ def match(response, raw_code):
 
 
 def create(response):
-    """Make her a participant on the number she typed. Only for a number on
-    a card list that nobody has yet."""
     if response.decision is not None:
         raise ReviewError("This response has already been dealt with.")
     try:
@@ -299,7 +244,6 @@ def create(response):
 
 
 def discard(response):
-    """Not a real visit. If one was recorded automatically, it goes too."""
     if response.decision == DECISION_DISCARDED:
         return
     old = response.decision
@@ -312,7 +256,6 @@ def discard(response):
 
 
 def mark_checked(response):
-    """Looked at it; the recorded visit stands."""
     if response.decision != DECISION_AUTO:
         raise ReviewError("Only a recorded visit can be marked as checked.")
     response.reviewed_by_id = _actor()
@@ -323,9 +266,6 @@ def mark_checked(response):
     db.session.flush()
 
 
-# --- Event names ----------------------------------------------------------------------------
-
-
 @dataclass
 class EventLabel:
     label: str
@@ -334,8 +274,6 @@ class EventLabel:
 
 
 def event_labels():
-    """Every event answer the form has sent, with how many responses gave
-    it and what it is mapped to. Unmapped first."""
     counts = {}
     for (label,) in db.session.query(FormResponse.raw_event_label).filter(
             FormResponse.raw_event_label.isnot(None)):
@@ -355,9 +293,6 @@ def unmapped_label_count():
 
 
 def map_event(label, service_type_id):
-    """Map an event answer to a service type (None removes the mapping).
-    Every visit from a response with that answer, past ones included,
-    picks it up."""
     label = tidy_label(label)
     if not label:
         raise ReviewError("An event name is needed.")
@@ -383,7 +318,6 @@ def map_event(label, service_type_id):
                             field="service_type", old_value=old, new_value=new,
                             description=f"Form event “{label}”")
 
-    # Re-label the visits that came from responses with this answer.
     response_ids = [str(r.id) for r in FormResponse.query.filter(
         sa.func.lower(sa.func.trim(FormResponse.raw_event_label)) == label.lower())]
     if response_ids:
@@ -395,20 +329,13 @@ def map_event(label, service_type_id):
     return len(response_ids)
 
 
-# --- Merging two numbers (a lost card) ---------------------------------------------------------
-
-
 def survivor(participant):
-    """The participant a visit counts toward: herself, or who she was merged into."""
     if participant is not None and participant.merged_into_id is not None:
         return db.session.get(Participant, participant.merged_into_id)
     return participant
 
 
 def merge(retiring_code, surviving_code):
-    """She has two numbers; keep `surviving_code`. Visits are not rewritten:
-    every count resolves a participant through merged_into_id, so the
-    merge is visible and can be undone. Kept one level deep."""
     retiring = participants.find_by_code(retiring_code)
     keeping = participants.find_by_code(surviving_code)
     if retiring is None or keeping is None:
@@ -440,4 +367,3 @@ def unmerge(participant):
 
 def merges():
     return Participant.query.filter(Participant.merged_into_id.isnot(None)).order_by(Participant.id).all()
-

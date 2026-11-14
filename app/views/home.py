@@ -1,4 +1,3 @@
-"""The home screen: start counting, or pick up something unfinished."""
 
 from flask import Blueprint, flash, redirect, render_template, request, url_for
 
@@ -25,9 +24,6 @@ def index():
 
     return render_template(
         "home.html",
-        # The batch "Start counting" would pick up, if there is one. When there
-        # is, the screen offers a fresh batch alongside it rather than only
-        # dropping her back into the unfinished one.
         working_batch=batch_service.todays_working_batch(),
         stale_drafts=[b for b in drafts if b.is_stale],
         fresh_drafts=[b for b in drafts if not b.is_stale],
@@ -39,12 +35,6 @@ def index():
 
 @home_bp.route("/batch/new", methods=["POST"])
 def new_batch():
-    """Start a brand new batch, whatever else is open or waiting on a review.
-
-    Deliberately separate from resume_today(): an unfinished batch -- including
-    one holding an item that still needs a price -- must never be able to
-    capture the next session's counting.
-    """
     day = None
     if request.form.get("date"):
         try:
@@ -59,7 +49,6 @@ def new_batch():
 
 @home_bp.route("/batch/resume", methods=["POST"])
 def resume_today():
-    """Open today's batch, starting one if there isn't one yet."""
     batch = batch_service.get_or_start_todays_batch()
     db.session.commit()
     return redirect(url_for("entry.entry_screen", batch_id=batch.id))

@@ -1,25 +1,3 @@
-"""The intake timer, the backup slider, and saving the intake survey.
-
-The timer is timestamps on the server. Elapsed time is always worked out
-from them:
-
-    elapsed = (stopped_at or now) - started_at - paused_seconds
-              - (now - paused_at, while paused)
-
-so the page can be refreshed, the phone can sleep, and the program director can pick
-the intake up on another device: every button is a POST that changes the
-row, and every page reads the row.
-
-Three things are computed, never stored (PRODUCTION_DESIGN 7.3):
-
-  final_minutes      the slider if it was set, else the timer, in minutes
-  duration_source    "timer", "timer_corrected" (both) or "manual" (slider only)
-  needs_confirmation ran longer than intake_flag_hours (3) or past midnight,
-                     and nobody has confirmed or corrected it
-
-Only the person who started an intake works its timer -- or an admin, for
-one left running by someone who has gone home. The views enforce that.
-"""
 
 import datetime
 from decimal import ROUND_HALF_UP, Decimal
@@ -67,7 +45,7 @@ SOURCE_LABELS = {
 
 
 class IntakeError(Exception):
-    """Something the person asked for can't be done. The message says why."""
+    pass
 
 
 def _actor():
@@ -75,9 +53,6 @@ def _actor():
     if user_id is None:
         raise audit.NoActor("An intake needs a signed-in person.")
     return user_id
-
-
-# --- The setting ------------------------------------------------------------------
 
 
 def flag_hours():
@@ -104,11 +79,7 @@ def set_flag_hours(hours):
     return hours
 
 
-# --- Finding sessions ------------------------------------------------------------------
-
-
 def active_session_for(user_id):
-    """This person's running or paused timer, if any (at most one)."""
     return IntakeSession.query.filter(
         IntakeSession.started_by_id == user_id,
         IntakeSession.status.in_(ACTIVE_STATUSES),
@@ -116,8 +87,6 @@ def active_session_for(user_id):
 
 
 def unfinished_sessions_for(user_id):
-    """This person's intakes with no survey yet that weren't discarded,
-    newest first: the one being worked on, and any left behind."""
     return (
         IntakeSession.query.outerjoin(IntakeSurvey)
         .filter(
@@ -131,7 +100,6 @@ def unfinished_sessions_for(user_id):
 
 
 def sessions_needing_confirmation():
-    """Every intake anyone ran that is flagged, oldest first."""
     candidates = IntakeSession.query.filter(
         IntakeSession.status != STATUS_DISCARDED,
         IntakeSession.confirmed_at.is_(None),
@@ -147,11 +115,7 @@ def recent_surveys(limit=20):
     )
 
 
-# --- The timer -----------------------------------------------------------------------
-
-
 def start():
-    """Start a timer for the signed-in person. One at a time per person."""
     user_id = _actor()
     if active_session_for(user_id) is not None:
         raise IntakeError("You already have an intake timer going. Stop it before starting another.")
@@ -161,7 +125,6 @@ def start():
     try:
         db.session.flush()
     except IntegrityError:
-        # Two taps at once, on two devices: the database's index caught it.
         db.session.rollback()
         raise IntakeError("You already have an intake timer going. Stop it before starting another.")
     return session
@@ -184,7 +147,6 @@ def resume(session):
 
 
 def stop(session):
-    """Stop the timer and freeze its value. Stopping twice changes nothing."""
     if session.is_stopped:
         return
     if not session.is_active:
@@ -199,8 +161,6 @@ def stop(session):
 
 
 def discard(session):
-    """Throw away an intake started by mistake. Not once a survey is saved.
-    Any answers typed and not saved go with it."""
     if session.survey is not None:
         raise IntakeError("This intake has a saved survey, so it can't be discarded.")
     session.survey_draft = None
@@ -217,7 +177,6 @@ def _fold_in_pause(session, now):
 
 
 def elapsed_seconds(session, now=None):
-    """Seconds the timer has counted. Frozen once stopped."""
     if session.status == STATUS_STOPPED and session.timer_seconds is not None:
         return session.timer_seconds
     if session.status == STATUS_STOPPED or session.started_at is None:
@@ -230,12 +189,6 @@ def elapsed_seconds(session, now=None):
     return max(0, int(seconds))
 
 
-# --- Answers typed but not saved yet ----------------------------------------------------
-
-# Every survey box, and the most a draft keeps of it. Nothing here is
-# checked -- a draft is whatever was typed, half-finished included; the
-# checks run when the survey is saved. The caps only stop a draft growing
-# past what the survey itself would accept.
 DRAFT_TEXT_FIELDS = {
     "card_number": 12,
     "survey_date": 10,
@@ -249,14 +202,6 @@ SURVEY_FORM_MARKER = "survey_form"
 
 
 def keep_draft(session, form):
-    """Keep the survey answers that came along with a timer button.
-
-    Staging found the bug this fixes: Pause, Resume and Stop each reload the
-    page, and answers typed but not saved were lost. Each button now submits
-    the survey form's boxes too, and they are kept on the session until the
-    survey is saved or the intake discarded. A request without the survey's
-    boxes leaves the draft alone.
-    """
     if form.get(SURVEY_FORM_MARKER) != "1":
         return
     draft = {}
@@ -267,8 +212,6 @@ def keep_draft(session, form):
     qualities = [q for q in form.getlist("quality") if q.isascii() and q.isdigit()]
     if qualities:
         draft["quality"] = qualities[:DRAFT_MAX_QUALITIES]
-    # The slider always sends a value; keep it only if its box was ticked,
-    # or an untouched slider would come back looking like a correction.
     if form.get("use_slider"):
         draft["use_slider"] = "1"
         draft["slider_minutes"] = (form.get("slider_minutes") or "")[:3]
@@ -277,8 +220,6 @@ def keep_draft(session, form):
 
 
 class DraftAnswers:
-    """Kept answers, read the way the page reads a submitted form:
-    get(name, default) and getlist(name)."""
 
     def __init__(self, draft):
         self._draft = draft or {}
@@ -301,11 +242,7 @@ def draft_answers(session):
     return DraftAnswers(session.survey_draft if session is not None else None)
 
 
-# --- The slider, and what the intake took ----------------------------------------------
-
-
 def parse_slider(raw):
-    """The slider's value, or None. 0..180 in steps of 15."""
     if raw in (None, ""):
         return None
     try:
@@ -318,8 +255,6 @@ def parse_slider(raw):
 
 
 def set_slider(session, minutes):
-    """Correct the time by hand. Both raw values are kept; once the intake
-    is stopped the change is audited."""
     minutes = parse_slider(minutes)
     if session.is_stopped:
         audit.apply_change(session, "slider_minutes", minutes, table_name="intake_session",
@@ -330,7 +265,6 @@ def set_slider(session, minutes):
 
 
 def final_minutes(session):
-    """The slider if set, else the timer rounded to the minute, else None."""
     if session.slider_minutes is not None:
         return session.slider_minutes
     if session.timer_seconds is not None:
@@ -347,11 +281,6 @@ def duration_source(session):
 
 
 def needs_confirmation(session, now=None):
-    """Ran longer than the flag setting, or across local midnight, and
-    nobody has confirmed it or typed a corrected time.
-
-    A forgotten timer must not count as a nine-hour intake on its own say-so.
-    """
     if session.status == STATUS_DISCARDED or session.confirmed_at is not None:
         return False
     if session.slider_minutes is not None:
@@ -364,7 +293,6 @@ def needs_confirmation(session, now=None):
 
 
 def confirm(session):
-    """Someone looked at a flagged time and says it is right."""
     if not session.is_stopped:
         raise IntakeError("Stop the timer before confirming its time.")
     session.confirmed_by_id = _actor()
@@ -376,7 +304,6 @@ def confirm(session):
 
 
 def start_batch(session):
-    """Open a batch for this intake, service type Intake, linked to it."""
     if session.batch_id is not None:
         return session.batch
     service_type = ServiceType.query.filter(
@@ -392,9 +319,6 @@ def start_batch(session):
     session.batch_id = batch.id
     db.session.flush()
     return batch
-
-
-# --- The survey ------------------------------------------------------------------------
 
 
 def _short_text(raw, limit, label):
@@ -421,15 +345,6 @@ def parse_survey_date(raw):
 
 def save_survey(code, survey_date=None, reason=None, score=None, score_reason=None,
                 quality_ids=(), qualities_note=None, session=None, slider_minutes=None):
-    """Save an intake survey: the participant, the survey and her first
-    visit, together. Raises IntakeError (with nothing written) if anything
-    is wrong.
-
-    With a session, its timer is stopped and the survey linked to it. With
-    no session but a slider time, a "typed" session is made to hold it.
-    With neither, the intake has no time, which is allowed: a mother being
-    re-carded months after joining has no intake to time.
-    """
     user_id = _actor()
     try:
         code = participants.available_code(code)
@@ -457,7 +372,6 @@ def save_survey(code, survey_date=None, reason=None, score=None, score_reason=No
         db.session.flush()
 
     if session is not None:
-        # The answers now live in the survey; the draft has done its job.
         session.survey_draft = None
         if slider_minutes is not None:
             session.slider_minutes = slider_minutes
@@ -520,14 +434,9 @@ def _qualities(ids):
     return found
 
 
-# --- The qualities checklist -------------------------------------------------------------
-
-
 QUALITY_MAX = 100
 
 
-# A-Z, ignoring capitals. The list is short enough that alphabetical is
-# the order anyone would look for, and it needs no upkeep.
 ALPHABETICAL = sa.func.lower(QualityOption.label)
 
 
@@ -572,14 +481,7 @@ def update_quality(option, label=None, active=None):
     db.session.flush()
 
 
-
-# --- Intake time, for Program Health (Phase 7) -------------------------------------------
-
-
 def counted_intake_minutes(start, end):
-    """Final minutes of every intake whose survey is dated in the period
-    and whose time counts: it has one, and it isn't waiting to be checked.
-    A forgotten timer doesn't count until someone confirms or corrects it."""
     surveys = IntakeSurvey.query.filter(
         IntakeSurvey.survey_date >= start,
         IntakeSurvey.survey_date <= end,
@@ -595,7 +497,6 @@ def counted_intake_minutes(start, end):
 
 
 def waiting_to_be_checked(start, end):
-    """Intakes in the period left out because their time needs checking."""
     return sum(
         1 for survey in IntakeSurvey.query.filter(
             IntakeSurvey.survey_date >= start, IntakeSurvey.survey_date <= end,

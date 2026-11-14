@@ -1,9 +1,3 @@
-"""Reports: on screen, as .csv, and filed snapshots.
-
-Admins only (app/auth.py). The spreadsheet export is the report Sheet,
-filled from Totals (app/services/report_sheet.py): the .xlsx downloads were
-removed on 11 Nov 2026 (the client's decision).
-"""
 
 import datetime
 
@@ -13,7 +7,6 @@ from app.models.snapshot import ReportSnapshot
 from app.services import clock, exports, reports, snapshots, totals
 
 reports_bp = Blueprint("reports", __name__)
-
 
 
 def requested_month():

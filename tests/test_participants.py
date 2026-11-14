@@ -1,9 +1,3 @@
-"""Card numbers and participants (Phase 5).
-
-The card list is the only link between a mother and the app, so loading it
-is checked row by row and all-or-nothing, and a participant can only be
-made on a number that is on the list and not yet handed out.
-"""
 
 import random
 
@@ -23,9 +17,6 @@ def card_csv(codes, batch=1, start=1):
 
 def some_codes(n, seed=1, existing=()):
     return card_numbers.generate(n, existing=existing, rng=random.Random(seed))
-
-
-# --- Loading the list -----------------------------------------------------------------
 
 
 def test_a_card_list_loads_in_list_order(app):
@@ -91,9 +82,6 @@ def test_a_number_can_not_be_in_two_batches(app):
         participants.load_card_list(card_csv([codes[0]], batch=2))
 
 
-# --- Handing a number out ------------------------------------------------------------
-
-
 def test_an_unused_number_on_the_list_is_available(app):
     code = some_codes(1)[0]
     participants.load_card_list(card_csv([code]))
@@ -114,7 +102,6 @@ def test_a_typo_an_unknown_number_and_a_used_number_are_each_explained(app, admi
 
 
 def test_a_participant_must_be_on_the_list_even_past_the_service(app, admin_user):
-    """The foreign key is the last line of defence."""
     import sqlalchemy as sa
     db.session.add(Participant(code=some_codes(1)[0], created_by_id=admin_user.id))
     with pytest.raises(sa.exc.IntegrityError):
@@ -130,12 +117,7 @@ def test_next_unused_skips_numbers_given_out(app, admin_user):
     assert participants.card_list_status()["unused"] == 2
 
 
-# --- Privacy ---------------------------------------------------------------------------
-
-
 def test_the_participant_table_has_no_name_column():
-    """A mother is a card number and nothing else. A new column here has to
-    be added to this list on purpose."""
     columns = {c.name for c in Participant.__table__.columns}
     assert columns == {"id", "code", "created_at", "created_by_id", "merged_into_id"}
 
@@ -149,9 +131,6 @@ def test_the_audit_log_names_a_participant_by_id_not_card_number(app, admin_user
     for row in AuditLog.query.all():
         assert code not in " ".join(str(v) for v in (row.old_value, row.new_value, row.description))
     assert repr(participant) == f"<Participant {participant.id}>"
-
-
-# --- The upload page and the command ------------------------------------------------------
 
 
 def upload(client, text, name="cards-batch-1.csv"):

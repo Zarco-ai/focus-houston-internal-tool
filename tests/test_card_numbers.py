@@ -1,12 +1,3 @@
-"""Card numbers.
-
-A mother's card number is the only thing that ties a Google Form response to
-her. These tests prove the format does what the paper process relies on: a
-slip of the thumb is caught, never silently turned into a different mother.
-
-The "every" tests are exhaustive over all 9,000 possible numbers, not
-sampled -- the whole space is small enough to check outright.
-"""
 
 import random
 
@@ -22,7 +13,6 @@ ALL_CODES = [
 
 
 def test_check_digit_matches_the_published_damm_example():
-    """Damm's own worked example: 572 -> 4. If this fails the table is wrong."""
     assert card_numbers.check_digit("572") == "4"
     assert card_numbers._interim("5724") == 0
 
@@ -34,14 +24,11 @@ def test_every_generated_code_is_five_digits_and_valid():
 
 
 def test_a_card_number_never_starts_with_zero():
-    """Google Sheets drops leading zeros; "04827" would arrive as "4827"."""
     assert all(code[0] != "0" for code in ALL_CODES)
     assert not card_numbers.is_valid("04827")
 
 
 def test_every_single_mistyped_digit_is_caught():
-    """One wrong digit anywhere, in any of the 9,000 numbers, fails
-    validation. So one slip can never land on another real mother."""
     for code in ALL_CODES:
         for position in range(5):
             for wrong in "0123456789":
@@ -56,14 +43,12 @@ def test_every_swap_of_two_neighbouring_digits_is_caught():
         for position in range(4):
             a, b = code[position], code[position + 1]
             if a == b:
-                continue  # swapping identical digits changes nothing
+                continue
             swapped = code[:position] + b + a + code[position + 2:]
             assert not card_numbers.is_valid(swapped), (code, swapped)
 
 
 def test_two_valid_codes_never_differ_in_only_one_digit():
-    """The same property stated the other way round: the nearest other valid
-    number is always at least two digits away."""
     valid = set(ALL_CODES)
     for code in ALL_CODES:
         for position in range(5):
@@ -81,7 +66,6 @@ def test_spaces_and_dashes_a_mother_might_type_are_ignored(typed):
 
 @pytest.mark.parametrize("junk", [None, "", "abcde", "4827", "482730", "4827x", "12345"])
 def test_anything_that_is_not_a_card_number_is_rejected(junk):
-    """12345 is five digits but its check digit is wrong."""
     assert not card_numbers.is_valid(junk)
 
 
@@ -114,7 +98,5 @@ def test_generate_refuses_a_count_below_one():
 
 
 def test_numbers_are_not_handed_out_in_order():
-    """The order on the list carries no meaning -- a number does not reveal
-    how many mothers are enrolled or who came first."""
     codes = card_numbers.generate(200, rng=random.Random(7))
     assert codes != sorted(codes)

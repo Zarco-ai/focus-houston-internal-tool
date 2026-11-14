@@ -1,21 +1,3 @@
-"""The CSV exports: raw tables, one row per thing.
-
-  line items      totals.export_csv -- the prototype's columns, unchanged,
-                  so anything reading today's file keeps working.
-  retention       one row per month: S, E, N, the breakdown, separations,
-                  average headcount and the four rates.
-  program health  the Program Health metrics, a row per month and the
-                  whole range (replaced the card-number files, 11 Nov 2026).
-
-Every export is admin-only (app/auth.py). None of them carries free
-text a mother or the program director typed about a person: no survey reasons, no
-qualities, no notes -- the most sensitive data stays on the screen, behind
-a sign-in.
-
-CSV injection: a spreadsheet opens a cell starting with = + - or @ as a
-formula. Every text cell that came from someone's typing goes through
-safe(), which puts an apostrophe in front -- the standard defence (OWASP).
-"""
 
 import csv
 import datetime
@@ -27,7 +9,6 @@ FORMULA_STARTS = ("=", "+", "-", "@", "\t", "\r")
 
 
 def safe(value):
-    """A typed text value, made safe to open in a spreadsheet."""
     if value is None:
         return ""
     text = str(value)
@@ -60,7 +41,6 @@ def months_between(start, end):
 
 
 def retention_csv(start, end):
-    """One row per month touching the range. Rates blank when n/a."""
     people = retention.visits_by_person()
     window = retention.window_days()
     rows = []
@@ -79,10 +59,6 @@ def retention_csv(start, end):
 
 
 def program_health_csv(start, end):
-    """The Program Health metrics (the Totals page's last group): a row per
-    month touching the range, then the whole range. Replaced the intake-times
-    and form-responses files (the client's decision, 11 Nov 2026): figures
-    only, no card numbers."""
     rows_metrics = [s for s in metrics.settings()
                     if s.enabled and s.metric.group == "PROGRAM_HEALTH"]
     header = ["period", "from", "to"] + [s.label for s in rows_metrics]

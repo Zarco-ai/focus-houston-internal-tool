@@ -1,4 +1,3 @@
-"""Looking at batches that have already been approved."""
 
 from flask import Blueprint, render_template
 
@@ -19,11 +18,6 @@ def list_batches():
 
 @batches_bp.route("/batches/<int:batch_id>")
 def view_batch(batch_id):
-    """One committed batch, with its correction history.
-
-    Lines are still editable from the review screen; every change made here
-    after approval shows up in the history at the bottom of the page.
-    """
     batch = db.get_or_404(Batch, batch_id)
 
     history = audit.history_for("batch", batch.id)
@@ -42,8 +36,6 @@ def view_batch(batch_id):
 
 
 def _attendance_rows(batch):
-    """(label, shown value) for every count above zero, switched on or not --
-    this page shows what was recorded."""
     if batch.attendance is None:
         return []
     rows = []

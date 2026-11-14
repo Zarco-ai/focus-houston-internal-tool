@@ -1,9 +1,3 @@
-"""Backup and restore (Phase 9).
-
-The test that matters: back up a database with something in every kind of
-table, empty it, restore, and get back exactly what was there -- the same
-rows, the same values, the same next ids.
-"""
 
 import datetime
 import json
@@ -28,8 +22,6 @@ from tests.conftest import empty_every_table
 
 
 def some_of_everything(admin_user):
-    """A batch with lines and attendance, a participant with an intake and a
-    quality, a filed snapshot, audit rows: every type of column."""
     codes = card_numbers.generate(3, rng=random.Random(21))
     participants.load_card_list("list_position,card_number,batch\n" + "".join(
         f"{i},{c},1\n" for i, c in enumerate(codes, 1)))

@@ -1,17 +1,3 @@
-"""Migrations.
-
-The schema is built and changed only by the files in migrations/versions/.
-These tests hold three promises:
-
-  * the migrations produce exactly the schema the models describe -- a model
-    change without a migration fails here, not on Render;
-  * every migration can be undone and redone;
-  * a migration never imports app code, so editing the app can never change
-    what an old migration does.
-
-The test database itself is built by running the migrations (see
-conftest.py), so the whole suite also depends on them working.
-"""
 
 import pathlib
 
@@ -57,8 +43,6 @@ def test_a_migration_never_imports_app_code():
 
 
 def test_there_is_exactly_one_head():
-    """Two migrations both claiming to follow the same parent would make the
-    order of changes ambiguous. Alembic refuses to upgrade; catch it here."""
     from alembic.script import ScriptDirectory
 
     from app import MIGRATIONS_DIR

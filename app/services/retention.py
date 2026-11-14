@@ -1,44 +1,3 @@
-"""Who is active, and retention, engagement and turnover.
-
-Every definition here is written out in docs/METRICS.md, with worked
-examples; tests/test_retention.py checks each against named mothers whose
-dates were worked out by hand. All dates are Houston calendar dates. W is
-the activity window, 60 days unless an admin changes it.
-
-  Visit         An intake, or a Google Form response matched to her. A lost
-                card merged into a new one: both numbers' visits are hers.
-  Joined        Her first visit (her intake, almost always).
-  Active on D   Her most recent visit on or before D, v, has D - v <= W. A
-                visit exactly W days before still counts; W + 1 does not.
-  Separation    v + W + 1, unless she visits again on or before that day. It
-                stays in its month even if she comes back later (Phase 0
-                answer 4).
-
-For a period P_start..P_end:
-
-  S  active on P_start        E  active on P_end
-  N  joined inside the period
-  R  active on both           Returned   active at the end, not at the
-                                         start, joined before the period
-  New still active   active at the end, not at the start, joined inside
-
-  E = R + Returned + New still active, always (tests check it).
-
-  Retention (FOCUS formula)  (E - N) / S     n/a when S = 0
-  Retained                    R / S          n/a when S = 0
-  Turnover                    separations / ((S + E) / 2)    n/a when 0
-  Engagement                  of those who joined in the period, the share
-                              with a visit on a later day within W days of
-                              joining, even after the period ends (Phase 0
-                              answer 5). n/a until everyone who joined has
-                              had her full W days ("still maturing").
-
-A period that runs past today is measured up to today: nobody knows
-tomorrow's headcount, and a separation that hasn't happened isn't counted.
-
-Everything is computed from the visits each time; nothing is stored, so a
-corrected visit corrects every number at once.
-"""
 
 import bisect
 import datetime
@@ -54,9 +13,6 @@ DEFAULT_WINDOW = 60
 MIN_WINDOW, MAX_WINDOW = 7, 365
 
 ONE_DAY = datetime.timedelta(days=1)
-
-
-# --- The setting ---------------------------------------------------------------------
 
 
 def window_days():
@@ -83,12 +39,7 @@ def set_window_days(days):
     return days
 
 
-# --- Visits per person ---------------------------------------------------------------------
-
-
 def visits_by_person():
-    """{person id: sorted list of distinct visit dates}. A merged number's
-    visits go to the number it was merged into."""
     rows = (
         db.session.query(Participant.id, Participant.merged_into_id, ParticipantVisit.visit_date)
         .join(ParticipantVisit, ParticipantVisit.participant_id == Participant.id)
@@ -111,14 +62,6 @@ def is_active(dates, day, window):
 
 
 def separation_dates(dates, window):
-    """Every date she became inactive: the day after her window closes,
-    v + W + 1, if she has no visit on or before it.
-
-    "On or before": a visit ON day W + 1 means she was never inactive -- she
-    came back the very day she would have lapsed. Found in Phase 9 by the
-    brute-force check on 2,000 made-up mothers; with `> window` here, a
-    return on exactly day 61 was counted as a separation as well.
-    """
     gaps = []
     for index, visit in enumerate(dates):
         following = dates[index + 1] if index + 1 < len(dates) else None
@@ -131,11 +74,7 @@ def headcount(people, day, window):
     return sum(1 for dates in people.values() if is_active(dates, day, window))
 
 
-# --- A period ---------------------------------------------------------------------------------
-
-
 def _rate(numerator, denominator):
-    """A percentage to one decimal place, or None ("n/a") when dividing by 0."""
     if not denominator:
         return None
     value = Decimal(numerator) * 100 / Decimal(denominator)
@@ -145,8 +84,8 @@ def _rate(numerator, denominator):
 @dataclass
 class Retention:
     start: datetime.date
-    end: datetime.date            # the period's end
-    measured_to: datetime.date    # min(end, today)
+    end: datetime.date
+    measured_to: datetime.date
     window: int
     S: int = 0
     E: int = 0
@@ -155,11 +94,11 @@ class Retention:
     returned: int = 0
     new_still_active: int = 0
     separations: int = 0
-    joined: int = 0               # = N
+    joined: int = 0
     engaged: int = 0
     not_engaged: int = 0
     maturing: int = 0
-    future: bool = False          # the period hasn't started yet
+    future: bool = False
     people: dict = field(default_factory=dict, repr=False)
 
     @property
@@ -184,20 +123,12 @@ class Retention:
 
     @property
     def engagement(self):
-        """n/a while anyone who joined is still within her W days.
-
-        Found with made-up data (Phase 9): leaving the still-maturing out of
-        a rate that is shown anyway biases it upward -- a mother who already
-        came back counts as engaged, one who hasn't yet is left out -- so
-        every recent month read close to 100%. The rate waits until the
-        whole group's W days are over; the counts so far are shown."""
         if self.maturing:
             return None
         return _rate(self.engaged, self.engaged + self.not_engaged)
 
 
 def measure(start, end, window=None, today=None, people=None):
-    """Everything above for one period, from the visits."""
     window = window or window_days()
     today = today or clock.local_today()
     people = visits_by_person() if people is None else people
@@ -242,7 +173,5 @@ def measure(start, end, window=None, today=None, people=None):
 
 
 def distinct_people_with_visits(start, end):
-    """# of unique clients served: different people with a visit in the
-    period. A merged number is one person."""
     return sum(1 for dates in visits_by_person().values()
                if any(start <= day <= end for day in dates))

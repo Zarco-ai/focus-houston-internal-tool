@@ -1,10 +1,3 @@
-"""Security headers, the Content-Security-Policy, and error pages.
-
-The headers are set in one place (app/security.py). These tests check they
-arrive on every kind of response -- a signed-in page, the sign-in page, an
-error page, a static file -- and that nothing in the templates would break
-under the policy (an inline script would simply not run).
-"""
 
 import pathlib
 import re
@@ -57,8 +50,6 @@ def test_the_policy_allows_no_inline_or_outside_scripts():
 
 
 def test_no_template_has_inline_javascript():
-    """Under script-src 'self' an inline script or onclick= silently does
-    nothing. This catches one before it ships as a dead button."""
     offenders = []
     for path in sorted(TEMPLATES.rglob("*.html")):
         source = path.read_text(encoding="utf-8")
@@ -72,14 +63,11 @@ def test_no_template_has_inline_javascript():
 
 
 def test_pages_are_not_cached_but_static_files_may_be(client):
-    """Back button after signing out on a shared computer shows nothing."""
     assert client.get("/").headers["Cache-Control"] == "no-store"
     assert client.get("/static/css/app.css").headers.get("Cache-Control") != "no-store"
 
 
 def test_hsts_is_not_sent_in_development(client):
-    """Sending HSTS from http://localhost would make the browser insist on
-    HTTPS for localhost for two years."""
     assert "Strict-Transport-Security" not in client.get("/").headers
 
 
@@ -87,9 +75,6 @@ def test_hsts_is_not_sent_in_development(client):
 def production_app(monkeypatch):
     monkeypatch.delenv("FOCUS_ENV", raising=False)
     monkeypatch.setenv("SECRET_KEY", "p" * 40)
-    # The real test database (pages read a setting from it). sslmode=disable
-    # only because the local Docker database has no certificate; production
-    # adds sslmode=require when the URL doesn't say.
     from app.config import LOCAL_TEST_DATABASE_URL
     import os
     monkeypatch.setenv(
@@ -110,9 +95,6 @@ def test_hsts_is_sent_in_production(production_app):
 
 
 def test_behind_renders_proxy_the_google_return_address_is_https(production_app, monkeypatch):
-    """Render's proxy terminates HTTPS and forwards plain HTTP to the app.
-    ProxyFix makes the app believe the forwarded scheme -- without it, the
-    return address sent to Google would be http://, which Google rejects."""
     from flask import redirect
 
     from app.extensions import oauth
@@ -138,11 +120,6 @@ def test_behind_renders_proxy_the_google_return_address_is_https(production_app,
 
 
 def test_behind_cloudflare_the_rate_limit_counts_each_visitor(production_app, monkeypatch):
-    """Cloudflare names the visitor in CF-Connecting-IP. X-Forwarded-For
-    showed a different Cloudflare address on almost every request on
-    staging, so counting by it spread one visitor over many counters (the
-    first visitor below would never be refused). Each visitor must get their
-    own count however their requests are routed."""
     from flask import redirect
 
     from app.extensions import oauth
@@ -163,7 +140,6 @@ def test_behind_cloudflare_the_rate_limit_counts_each_visitor(production_app, mo
         monkeypatch.setattr(oauth.google, "authorize_redirect",
                             lambda uri: redirect("https://accounts.google.com/"))
         browser = production_app.test_client()
-        # The same visitor each time, arriving through a different edge.
         first_visitor = [sign_in(browser, "203.0.113.20", edge) for edge in range(3)]
         second_visitor = sign_in(browser, "203.0.113.21", 0)
 
@@ -172,9 +148,6 @@ def test_behind_cloudflare_the_rate_limit_counts_each_visitor(production_app, mo
 
 
 def test_on_a_laptop_the_rate_limit_ignores_cloudflares_header(make_app, monkeypatch):
-    """Only production trusts CF-Connecting-IP. Anywhere else nothing sets it,
-    so a value in a request was typed by whoever sent it -- changing it must
-    not reset the count."""
     from flask import redirect
 
     from app.config import TestConfig
@@ -195,9 +168,6 @@ def test_on_a_laptop_the_rate_limit_ignores_cloudflares_header(make_app, monkeyp
         ]
 
     assert statuses == [302, 302, 429]
-
-
-# --- Error pages ------------------------------------------------------------------
 
 
 class NoPropagateConfig(TestConfig):
@@ -244,5 +214,4 @@ def test_a_missing_page_is_friendly_for_a_signed_in_user(client):
 
 
 def test_abort_is_importable_for_views():
-    # Views use flask.abort(403/404); the handlers above turn it into a page.
     assert callable(abort)

@@ -1,24 +1,3 @@
-"""Made-up data for checking the app at scale. NEVER real people.
-
-`flask demo load` fills an empty local database with an imaginary program:
-mothers with card numbers and intakes, Google Form check-ins over many
-months, weekly distributions with goods and attendance. It goes through the
-app's real code paths -- intake.save_survey(), the timer, the Google Form
-sync and its review rules, batches.commit_batch() -- so it exercises what
-The program director will exercise, mistakes included:
-
-  * mothers who come every few weeks, who drift away, who come once, and
-    who lapse for months and come back (the case the two retention
-    formulas disagree about);
-  * a typo in about 1 in 20 card numbers typed into the form, double
-    submissions, a "returning: no" from someone who has a card, a form
-    filled in before her intake was entered;
-  * intake times around 45 minutes, and a few forgotten timers.
-
-Everything is generated from a seed, so the same seed gives the same
-program every time. The command refuses to run in production and refuses a
-database that already has participants.
-"""
 
 import datetime
 import random
@@ -41,7 +20,7 @@ EVENTS = ("Diaper Distribution", "ESL class", "Nutrition Class", "Coffee Social"
 REASONS = ("Diapers for the baby", "Classes", "Friends here", "Help with the baby",
            "Clothes", "Community")
 
-PERSONAS = (                       # (name, share of mothers)
+PERSONAS = (
     ("regular", 0.35),
     ("drifter", 0.25),
     ("one_time", 0.20),
@@ -59,7 +38,7 @@ class Mother:
     code: str
     persona: str
     intake: datetime.date
-    visits: list = field(default_factory=list)     # later visits (form check-ins)
+    visits: list = field(default_factory=list)
 
 
 def _gap(rng, low, high):
@@ -67,7 +46,6 @@ def _gap(rng, low, high):
 
 
 def plan_mothers(rng, count, start, end):
-    """Who comes when. Pure: no database."""
     codes = card_numbers.generate(count + count // 10 + 20, rng=rng)
     mothers = []
     names, weights = zip(*PERSONAS)
@@ -91,7 +69,7 @@ def plan_mothers(rng, count, start, end):
             for _ in range(rng.randint(2, 4)):
                 day += _gap(rng, 10, 30)
                 visits.append(day)
-            day += _gap(rng, 90, 200)                 # gone for months
+            day += _gap(rng, 90, 200)
             for _ in range(rng.randint(1, 4)):
                 visits.append(day)
                 day += _gap(rng, 10, 30)
@@ -110,7 +88,6 @@ def _serial(local):
 
 
 def _typo(rng, code):
-    """Change one digit: the check digit makes the result invalid."""
     position = rng.randrange(5)
     digit = str((int(code[position]) + rng.randint(1, 9)) % 10)
     return code[:position] + digit + code[position + 1:]
@@ -128,12 +105,10 @@ def form_rows(rng, mothers, spare_codes):
             row = [_serial(local), typed, returning, rng.choice(EVENTS), rng.choice(REASONS),
                    rng.randint(5, 10), "Kind people"]
             rows.append(row)
-            if rng.random() < 0.02:              # sent twice
+            if rng.random() < 0.02:
                 again = list(row)
                 again[0] = _serial(local + datetime.timedelta(minutes=1))
                 rows.append(again)
-    # A few forms from mothers whose intake was never entered (on the list,
-    # not given out).
     for code in spare_codes[:5]:
         rows.append([_serial(datetime.datetime(2026, 9, 1, 11)), code, "No", "Walk-in",
                      "First time", 8, "Heard about it"])
@@ -142,7 +117,6 @@ def form_rows(rng, mothers, spare_codes):
 
 
 class _DemoSheet:
-    """The made-up form Sheet, read by the real sync."""
 
     HEADERS = ["Timestamp", "What's your ID?", "Are you a returning mother?",
                "What event are you here for?", "What is your reason for joining us today?",
@@ -162,14 +136,12 @@ def _intake_minutes(rng):
 
 def load(count=300, seed=2026, start=datetime.date(2025, 1, 1), end=None, admin_id=None,
          progress=lambda message: None):
-    """Fill an empty database with a made-up program. Returns a summary."""
     if Participant.query.count():
         raise DemoError("This database already has participants. Use an empty one.")
     end = end or (clock.local_today() - datetime.timedelta(days=1))
     rng = random.Random(seed)  # nosec B311 -- repeatable made-up data, not security; real card numbers use secrets
     mothers, spare = plan_mothers(rng, count, start, end)
 
-    # The card list, as printed.
     all_codes = [m.code for m in mothers] + spare
     participants.load_card_list("list_position,card_number,batch\n" + "".join(
         f"{i},{c},1\n" for i, c in enumerate(all_codes, 1)))
@@ -179,7 +151,6 @@ def load(count=300, seed=2026, start=datetime.date(2025, 1, 1), end=None, admin_
     db.session.commit()
     progress(f"{len(all_codes)} card numbers loaded.")
 
-    # Intakes, oldest first; a few with a forgotten timer.
     forgotten = 0
     for number, mother in enumerate(sorted(mothers, key=lambda m: m.intake), start=1):
         ticked = [str(q.id) for q in qualities if rng.random() < 0.3]
@@ -201,7 +172,6 @@ def load(count=300, seed=2026, start=datetime.date(2025, 1, 1), end=None, admin_
             progress(f"{number} intakes.")
     db.session.commit()
 
-    # The Google Form, through the real sync.
     rows = form_rows(rng, mothers, spare)
     run = form_sync.run(_DemoSheet(rows), triggered_by_id=admin_id)
     progress(f"{run.rows_imported} form responses synced, {run.rows_flagged} to review.")
@@ -211,7 +181,6 @@ def load(count=300, seed=2026, start=datetime.date(2025, 1, 1), end=None, admin_
             form_review.map_event(event, service.id)
     db.session.commit()
 
-    # Weekly distributions with goods and attendance.
     batch_count = _distributions(rng, start, end)
     progress(f"{batch_count} approved batches.")
     return {
@@ -231,7 +200,7 @@ def _distributions(rng, start, end):
     diaper = next(i for i in fixed if i.report_bucket == "diapers")
     service = ServiceType.query.filter_by(name="Diaper Distribution").one()
     count = 0
-    day = start + datetime.timedelta(days=(7 - start.weekday()) % 7)   # Mondays
+    day = start + datetime.timedelta(days=(7 - start.weekday()) % 7)
     while day <= end:
         batch = batches.open_batch(date=day, service_type_id=service.id)
         batches.set_line(batch, diaper, quantity=rng.randint(150, 600))
@@ -249,4 +218,3 @@ def _distributions(rng, start, end):
         count += 1
         day += datetime.timedelta(days=7)
     return count
-

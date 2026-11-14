@@ -1,9 +1,3 @@
-"""Loading the catalog CSV.
-
-The row count is read from the file rather than hardcoded, so these tests stay
-true when someone edits the CSV. (For the record: the file shipped with
-this project has 119 item rows, not the 120 the brief estimated.)
-"""
 
 import csv
 from decimal import Decimal
@@ -30,8 +24,6 @@ def test_every_row_in_the_csv_becomes_an_item(app, csv_path):
 
 
 def test_blank_prices_load_as_no_price_rather_than_zero(app, csv_path):
-    """Several source rows have no price at all. Zero would be a lie -- a
-    booster seat is not free."""
     seeding.seed_all(csv_path)
 
     stroller = catalog.find_item("Booster Seat 2-in-1", "baby_mom_items")
@@ -39,7 +31,6 @@ def test_blank_prices_load_as_no_price_rather_than_zero(app, csv_path):
     assert stroller.current_price() is None
     assert stroller.price_entry == "manual"
 
-    # The price row still exists, recording "as of this date, no price known".
     assert len(stroller.prices) == 1
     assert stroller.prices[0].unit_price_new is None
 
@@ -67,7 +58,6 @@ def test_service_types_are_seeded(app, csv_path):
 
 
 def test_used_multipliers_come_from_the_file(app, csv_path):
-    """The rate on each item matches its row in the CSV, not a constant."""
     seeding.seed_all(csv_path)
 
     for row in rows_in_file(csv_path):
@@ -77,8 +67,6 @@ def test_used_multipliers_come_from_the_file(app, csv_path):
 
 
 def test_reseeding_does_not_duplicate_or_overwrite(app, csv_path):
-    """Running seed.py twice is safe, and it does not undo a price The Center Director
-    has corrected in the app."""
     seeding.seed_all(csv_path)
     count = Item.query.count()
 
@@ -105,7 +93,6 @@ def test_a_bad_report_bucket_is_refused(app, tmp_path):
 
 
 def test_a_missing_used_rate_is_refused(app, tmp_path):
-    """An item with no rate cannot be valued used, so it must not load."""
     bad = tmp_path / "bad.csv"
     bad.write_text(
         "item_name,category,report_bucket,unit_price_new,used_multiplier,"
@@ -123,9 +110,6 @@ def test_a_missing_column_is_refused(app, tmp_path):
         seeding.read_catalog_csv(str(bad))
 
 
-# --- Loading a new database, and writing the file (Phase 3) ---------------------
-
-
 def test_load_if_empty_loads_a_new_database(app, csv_path):
     from app.services.seeding import load_if_empty
 
@@ -134,8 +118,6 @@ def test_load_if_empty_loads_a_new_database(app, csv_path):
 
 
 def test_load_if_empty_never_touches_an_existing_catalog(seeded_app):
-    """Once the catalog lives in the app, a restart must not bring back an
-    item the program director renamed."""
     from app.models import Item
     from app.services import catalog
     from app.services.seeding import load_if_empty

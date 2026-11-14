@@ -1,9 +1,3 @@
-"""Reports and exports (Phase 8).
-
-The invariants first: the monthly report's totals row is the Totals page's
-numbers; the year column is the year's own numbers; no cell anywhere is a
-formula; a filed report never changes.
-"""
 
 import csv
 import datetime
@@ -37,9 +31,6 @@ def item(name, category):
 
 
 def a_month(day=None):
-    """A mixed month: diapers, wipes (listed with diapers, counted as
-    hygiene), clothing, formula with a typed price, bus passes, a line with
-    no price yet, an unsorted custom item, and attendance."""
     from app.services import clock
     day = day or clock.local_today().replace(day=1)
     service = ServiceType.query.filter_by(name="Diaper Distribution").one()
@@ -55,19 +46,15 @@ def a_month(day=None):
     batches.commit_batch(first)
 
     second = batches.open_batch(date=day + datetime.timedelta(days=2), service_type_id=service.id)
-    batches.set_line(second, item("Stroller", "baby_mom_items"), quantity=1)      # no price yet
-    batches.add_custom_line(second, "Mystery onesie", quantity=2, unit_price=5)   # unsorted
+    batches.set_line(second, item("Stroller", "baby_mom_items"), quantity=1)
+    batches.add_custom_line(second, "Mystery onesie", quantity=2, unit_price=5)
     batches.set_attendance(second, {"individuals_served": 3})
     batches.commit_batch(second)
     db.session.commit()
     return day
 
 
-# --- The monthly report -------------------------------------------------------------------
-
-
 def test_the_monthly_totals_row_is_the_totals_page(seeded_app):
-    """The monthly report's totals row equals the computed totals."""
     day = a_month()
     report = reports.monthly(day.year, day.month)
     computed = metrics.values(report.start, report.end)
@@ -83,9 +70,8 @@ def test_rows_follow_the_directors_sheet(seeded_app):
     report = reports.monthly(day.year, day.month)
     kinds = [(row.kind, row.cells.get("description")) for row in report.rows]
 
-    assert kinds[0] == ("batch", "")       # never the note: it can hold a name
+    assert kinds[0] == ("batch", "")
     assert report.rows[0].cells["service"] == "Diaper Distribution"
-    # Wipes are listed with the diapers (decision 9) but counted as hygiene.
     diapers = next(row for row in report.rows if row.cells.get("description") == "Diapers")
     assert (diapers.cells["diapers_count"], diapers.cells["goods_count"]) == (240, 6)
     assert [k for k in kinds if k[0] == "item"][:3] == [
@@ -111,11 +97,8 @@ def test_a_switched_off_metric_leaves_the_monthly_columns(seeded_app):
     assert "meals_value" not in [c.key for c in report.columns]
 
 
-# --- The annual report ------------------------------------------------------------------------
-
-
 def test_the_year_is_the_sum_of_the_months_where_adding_makes_sense(seeded_app):
-    for setting in metrics.settings():   # some start off (meals, medical...)
+    for setting in metrics.settings():
         metrics.update_setting(setting.key, enabled=True)
     a_month(D(2026, 1, 5))
     a_month(D(2026, 3, 9))
@@ -130,7 +113,6 @@ def test_the_year_is_the_sum_of_the_months_where_adding_makes_sense(seeded_app):
 
 
 def test_unique_clients_counts_a_mother_once_a_year_not_once_a_month(seeded_app, admin_user):
-    """Finding F7: the 2025 annual sheet added the monthly unique counts."""
     code = card_numbers.generate(1, rng=random.Random(8))[0]
     participants.load_card_list(f"list_position,card_number,batch\n1,{code},1\n")
     mother = participants.create_participant(code, created_by_id=admin_user.id)
@@ -144,15 +126,11 @@ def test_unique_clients_counts_a_mother_once_a_year_not_once_a_month(seeded_app,
     assert row.year == 1
 
 
-# --- The CSVs --------------------------------------------------------------------------------------
-
-
 def read(text):
     return list(csv.reader(io.StringIO(text)))
 
 
 def test_the_line_item_csv_keeps_its_columns(seeded_app):
-    """Whatever reads today's export must keep working."""
     header = read(totals.export_csv(D(2026, 1, 1), D(2026, 1, 31)))[0]
     assert header == ["batch_date", "batch_id", "service_type", "item_name", "category",
                       "report_bucket", "quantity", "condition", "unit_price_at_time",
@@ -179,9 +157,6 @@ def test_the_retention_csv_has_a_row_per_month_and_blanks_for_n_a(seeded_app):
     assert rows[0] == exports.RETENTION_HEADER
     assert [r[0] for r in rows[1:]] == ["2026-01", "2026-02", "2026-03"]
     assert rows[1][exports.RETENTION_HEADER.index("retention_focus_pct")] == ""
-
-
-# --- Who may download what ----------------------------------------------------------------------------
 
 
 def test_reports_and_exports_are_admin_only(staff_client, seeded_app):
@@ -221,9 +196,6 @@ def test_the_report_pages_open(client, seeded_app):
     assert "Monthly report" in client.get("/reports/monthly").get_data(as_text=True)
     assert "Annual report" in client.get("/reports/annual").get_data(as_text=True)
     assert "Reports &amp; exports" in client.get("/totals").get_data(as_text=True)
-
-
-# --- Filed snapshots ------------------------------------------------------------------------------------
 
 
 def test_a_filed_report_doesnt_change_when_a_batch_is_corrected(seeded_app, admin_user):

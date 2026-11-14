@@ -1,10 +1,3 @@
-"""Users & Access: who may sign in, and as what. Admins only -- the sign-in
-guard (app/auth.py) enforces that for this whole blueprint, on the server.
-
-Every change here is written to the audit log with the admin who made it.
-The rules (the last admin can't be removed, ADMIN_EMAILS never re-adds a
-removed admin) live in app/services/users.py.
-"""
 
 from flask import Blueprint, flash, g, redirect, render_template, request, url_for
 
@@ -65,8 +58,6 @@ def remove(user_id):
         return redirect(url_for("users.index"))
 
     if person.id == g.user.id:
-        # Removing yourself works, and takes effect now: the guard sees an
-        # inactive user on the next request and signs them out.
         flash("You removed your own access.", "success")
     else:
         flash(f"{person.email} can no longer sign in.", "success")

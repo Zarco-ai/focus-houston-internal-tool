@@ -1,8 +1,3 @@
-"""The intake timer, the slider, and the survey (Phase 5).
-
-Time is frozen through the clock module, so "three hours later" and "past
-midnight in Houston" are exact.
-"""
 
 import datetime
 import random
@@ -25,7 +20,6 @@ HOUSTON = clock.HOUSTON
 
 
 def at(hour, minute=0, second=0, day=14):
-    """A moment on 14 October 2026 in Houston."""
     return datetime.datetime(2026, 10, day, hour, minute, second, tzinfo=HOUSTON)
 
 
@@ -39,16 +33,13 @@ def cards(seeded_app):
     return codes
 
 
-# --- The timer --------------------------------------------------------------------------
-
-
 def test_elapsed_time_leaves_out_pauses(seeded_app):
     with clock.freeze(at(10)):
         session = intake.start()
     with clock.freeze(at(10, 10)):
         intake.pause(session)
     with clock.freeze(at(10, 25)):
-        assert intake.elapsed_seconds(session) == 600       # frozen while paused
+        assert intake.elapsed_seconds(session) == 600
         intake.resume(session)
     with clock.freeze(at(10, 30)):
         intake.stop(session)
@@ -70,10 +61,6 @@ def test_stopping_while_paused_counts_the_pause_out(seeded_app):
 
 
 def test_the_timer_lives_on_the_server_and_survives_a_new_request(client, seeded_app):
-    """Start it in one request; any later request -- a refresh, another
-    device -- reads the same row and the same elapsed time."""
-    # Relative to now: a frozen date before the test's sign-in would read
-    # as an expired session.
     start = clock.now_utc() + datetime.timedelta(seconds=1)
     with clock.freeze(start):
         client.post("/intake/start")
@@ -82,7 +69,7 @@ def test_the_timer_lives_on_the_server_and_survives_a_new_request(client, seeded
         other_page = client.get("/totals").get_data(as_text=True)
 
     assert "0:12:05" in page
-    assert "0:12:05" in other_page            # the banner, on another page
+    assert "0:12:05" in other_page
     assert "Back to intake" in other_page
     assert IntakeSession.query.one().is_running
 
@@ -94,7 +81,6 @@ def test_one_timer_per_person(seeded_app):
 
 
 def test_the_database_itself_refuses_a_second_running_timer(seeded_app, admin_user):
-    """Two taps on two devices at once would get past the page's check."""
     now = clock.now_utc()
     db.session.add(IntakeSession(started_by_id=admin_user.id, status="running", started_at=now))
     db.session.flush()
@@ -110,9 +96,6 @@ def test_two_people_can_each_run_one(seeded_app, staff_user):
     with audit.acting_as(staff_user.id):
         intake.start()
     assert IntakeSession.query.count() == 2
-
-
-# --- Flagged times -------------------------------------------------------------------------
 
 
 def test_exactly_three_hours_is_not_flagged_and_a_second_more_is(seeded_app):
@@ -134,7 +117,6 @@ def test_a_timer_left_running_past_midnight_is_flagged(seeded_app):
 
 
 def test_midnight_is_houstons_not_the_servers(seeded_app):
-    """19:30 to 20:30 in Houston crosses midnight UTC, and is not flagged."""
     with clock.freeze(at(19, 30)):
         session = intake.start()
     with clock.freeze(at(20, 30)):
@@ -174,9 +156,6 @@ def test_the_flag_setting_is_used_and_audited(seeded_app):
         intake.set_flag_hours(0)
 
 
-# --- The slider -------------------------------------------------------------------------------
-
-
 def test_a_slider_correction_keeps_both_raw_values(seeded_app):
     with clock.freeze(at(10)):
         session = intake.start()
@@ -204,9 +183,6 @@ def test_the_timer_is_rounded_to_the_nearest_minute(seeded_app):
     assert intake.final_minutes(session) == 2
 
 
-# --- The survey ----------------------------------------------------------------------------------
-
-
 def test_saving_the_survey_creates_her_visit_and_stops_the_timer(seeded_app, cards):
     with clock.freeze(at(10)):
         session = intake.start()
@@ -232,7 +208,6 @@ def test_a_survey_with_a_slider_and_no_timer_records_a_typed_time(seeded_app, ca
 
 
 def test_a_survey_can_have_no_time(seeded_app, cards):
-    """A mother re-carded long after she joined has no intake to time."""
     survey = intake.save_survey(cards[0], survey_date="2026-03-02")
     assert survey.session is None
 
@@ -250,7 +225,6 @@ def test_a_future_date_is_refused(seeded_app, cards):
     with clock.freeze(at(23, 30)):
         with pytest.raises(intake.IntakeError, match="future"):
             intake.save_survey(cards[0], survey_date="2026-10-15")
-        # 23:30 in Houston is still the 14th, whatever UTC says.
         assert intake.save_survey(cards[1]).survey_date == datetime.date(2026, 10, 14)
 
 
@@ -305,14 +279,11 @@ def test_the_survey_tables_have_no_name_column():
             assert "name" not in column.name, f"{table.name}.{column.name}"
 
 
-# --- The page --------------------------------------------------------------------------------
-
-
 def test_the_page_saves_a_survey_end_to_end(client, seeded_app, cards):
     client.post("/intake/start")
     session = IntakeSession.query.one()
     page = client.get("/intake").get_data(as_text=True)
-    assert f'value="{cards[0]}"' in page     # the next number, filled in
+    assert f'value="{cards[0]}"' in page
 
     response = client.post("/intake/survey", data={
         "session_id": session.id, "card_number": cards[0],
@@ -354,7 +325,6 @@ def test_an_admin_can_stop_a_timer_someone_forgot(seeded_app, staff_user, client
 
 
 def test_intake_is_admin_only(staff_client, seeded_app, cards):
-    """The client's decision, 11 Nov 2026: staff count, review and see totals."""
     assert staff_client.get("/intake").status_code == 403
     assert staff_client.post("/intake/start").status_code == 403
     assert IntakeSession.query.count() == 0
@@ -405,7 +375,6 @@ def test_without_a_card_list_the_page_says_so(client, seeded_app):
 
 
 def test_qualities_are_listed_a_to_z_ignoring_capitals(client, seeded_app, cards):
-    """The client's choice (28 Oct 2026): alphabetical, no order numbers."""
     for label in ("Recently moved", "first pregnancy", "Has other children"):
         intake.add_quality(label)
     db.session.commit()
@@ -419,13 +388,6 @@ def test_qualities_are_listed_a_to_z_ignoring_capitals(client, seeded_app, cards
 
     survey = intake.save_survey(cards[0], quality_ids=[str(q.id) for q in intake.active_qualities()][::-1])
     assert [q.label for q in survey.qualities] == expected
-
-
-# --- Answers survive the timer buttons (staging, 28 Oct 2026) -------------------------------
-#
-# Found on staging: answers typed into the survey were lost when the timer
-# was stopped, because each timer button reloads the page. Every timer
-# button now submits the survey's boxes, kept until saved or discarded.
 
 
 ANSWERS = {
@@ -519,7 +481,7 @@ def test_kept_answers_are_capped_at_what_the_survey_accepts(seeded_app):
 def test_a_button_without_the_survey_leaves_the_kept_answers_alone(client, seeded_app):
     client.post("/intake/start", data=ANSWERS)
     session = IntakeSession.query.one()
-    client.post(f"/intake/{session.id}/pause")   # e.g. from an old open tab
+    client.post(f"/intake/{session.id}/pause")
     assert "Felt welcome" in _page(client)
 
 

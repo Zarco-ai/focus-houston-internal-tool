@@ -1,11 +1,3 @@
-"""Application factory.
-
-    from app import create_app
-    app = create_app()
-
-Everything is wired here and nowhere else: config, database, template filters,
-and the page blueprints.
-"""
 
 import logging
 import os
@@ -25,31 +17,18 @@ MIGRATIONS_DIR = os.path.join(
 
 
 def create_app(config_object=None):
-    """Build the app. With no argument the configuration comes from FOCUS_ENV
-    -- production unless it says development (see app/config.py)."""
     config_object = config_object or config_from_environment()
 
     app = Flask(__name__, instance_relative_config=True)
     app.config.from_object(config_object)
 
     if app.config.get("IS_PRODUCTION"):
-        # Reads SECRET_KEY and DATABASE_URL from the environment and raises
-        # ConfigError if either is missing. Nothing below runs without them.
         app.config.update(config_object.load())
     elif not app.config.get("SECRET_KEY"):
-        # Development only: a key generated once into instance/. Never in
-        # production, where Render's disk is wiped on every restart and a new
-        # key would sign everyone out mid-distribution.
         os.makedirs(app.instance_path, exist_ok=True)
         app.config["SECRET_KEY"] = resolve_secret_key(app.instance_path)
 
     if app.config.get("IS_PRODUCTION"):
-        # Render's proxy terminates HTTPS and forwards the request. ProxyFix
-        # trusts only the X-Forwarded-* entries our own proxies add, so the
-        # app knows the request was HTTPS (for secure cookies and the Google
-        # redirect address) and who the visitor really is (for rate limits).
-        # Rate limits name the visitor from Cloudflare's header instead --
-        # see CLIENT_IP_HEADER in config.py.
         hops = app.config["PROXY_HOPS"]
         app.wsgi_app = ProxyFix(app.wsgi_app, x_for=hops, x_proto=hops, x_host=hops)
         logging.basicConfig(
@@ -62,8 +41,6 @@ def create_app(config_object=None):
     migrate.init_app(app, db, directory=MIGRATIONS_DIR, compare_type=True)
     limiter.init_app(app)
 
-    # Importing the models registers every table with SQLAlchemy, so the
-    # migration tooling can compare them against the database.
     from app import models  # noqa: F401
 
     from app.auth import register_guard
@@ -82,29 +59,11 @@ def create_app(config_object=None):
     register_history_commands(app)
     register_batch_commands(app)
 
-    # The schema is NOT created here. It is built and changed only by
-    # migrations (`flask db upgrade`), which run as a deploy step -- never on
-    # an ordinary page load. See migrations/README.md.
 
     return app
 
 
 def resolve_secret_key(instance_path):
-    """The key Flask uses to sign session cookies and CSRF tokens.
-
-    In order of preference:
-
-    1. The SECRET_KEY environment variable, if you have set one.
-    2. instance/secret_key -- generated once, on first run, and reused after
-       that so restarting the app does not invalidate a form The Center Director already
-       has open.
-
-    Development and tests only. Production never calls this: it requires
-    SECRET_KEY from the environment and refuses to start without it.
-
-    It is never written into the source, because a key in a repository is not
-    a secret. instance/ is in .gitignore.
-    """
     from_env = os.environ.get("SECRET_KEY")
     if from_env:
         return from_env
@@ -121,7 +80,6 @@ def resolve_secret_key(instance_path):
     with open(key_path, "w", encoding="utf-8") as handle:
         handle.write(key)
 
-    # Readable and writable by this user only.
     os.chmod(key_path, stat.S_IRUSR | stat.S_IWUSR)
 
     return key
@@ -156,20 +114,14 @@ def register_blueprints(app):
 
 
 def register_commands(app):
-    """Command-line tools: flask --app wsgi users grant-admin EMAIL"""
 
     @app.cli.group("users")
     def users_group():
-        """Manage who can sign in, from the command line."""
+        pass
 
     @users_group.command("grant-admin")
     @click.argument("email")
     def grant_admin(email):
-        """BREAK GLASS: make EMAIL an active admin.
-
-        Only for when no admin can sign in. Run it from Render's shell; it
-        is recorded in the audit log.
-        """
         from app.services import users
 
         user = users.grant_admin_break_glass(email)
@@ -177,12 +129,10 @@ def register_commands(app):
 
     @app.cli.group("catalog")
     def catalog_group():
-        """Manage the item catalog from the command line."""
+        pass
 
     @catalog_group.command("load-if-empty")
     def load_catalog_if_empty():
-        """Load the catalog CSV into a database with no items; otherwise do
-        nothing. Staging runs this at startup (render.yaml)."""
         from app.services import seeding
 
         summary = seeding.load_if_empty(app.config["SEED_CSV_PATH"])
@@ -197,8 +147,6 @@ def register_commands(app):
     @catalog_group.command("export-csv")
     @click.argument("path", required=False)
     def export_catalog_csv(path):
-        """Write the catalog to the catalog CSV (or PATH): what a new
-        database will start with. Review it with git diff before committing."""
         from app.models import Item
         from app.services import seeding
 
@@ -213,11 +161,6 @@ def register_commands(app):
     @click.option("--as", "as_email", metavar="EMAIL",
                   help="The admin the changes are recorded under. Required with --apply.")
     def import_valuations(path, apply_, as_email):
-        """Compare the catalog with the Valuations workbook at PATH.
-
-        By default this is a dry run: it prints every change it would make
-        and changes nothing. Read it, then run again with --apply --as EMAIL.
-        """
         from app.extensions import db
         from app.models import Item
         from app.services import audit, clock, users, valuations
@@ -261,17 +204,10 @@ def register_commands(app):
 def register_backup_commands(app):
     @app.cli.group("backup")
     def backup_group():
-        """Back the database up to one file, and restore it (docs/RUNBOOK.md)."""
+        pass
 
     @backup_group.command("create")
     def backup_create():
-        """Write the whole database to standard output as one JSON document.
-
-        Pipe it straight into an encryption tool; it holds card numbers and
-        survey answers. It refuses to print to a terminal:
-
-            flask --app wsgi backup create | age -r "$FOCUS_BACKUP_KEY" > focus-YYYY-MM-DD.json.age
-        """
         import sys
 
         from app.services import backup
@@ -292,11 +228,6 @@ def register_backup_commands(app):
     @backup_group.command("restore")
     @click.argument("source", type=click.File("r", encoding="utf-8"), default="-")
     def backup_restore(source):
-        """Load a backup into an EMPTY database at the same migration.
-        SOURCE is a file, or - (the default) for standard input:
-
-            age -d -i focus-backup-key.txt focus-YYYY-MM-DD.json.age | flask --app wsgi backup restore
-        """
         import json
 
         from app.services import backup
@@ -309,13 +240,10 @@ def register_backup_commands(app):
 
 
 def register_demo_commands(app):
-    """Made-up data for checking the app at scale (app/services/demo.py).
-    Never in production: the commands refuse to run there."""
 
     @app.cli.group("demo")
     def demo_group():
-        """Made-up data: load it, check every number against a second
-        calculation, and time the app under load. Local databases only."""
+        pass
 
     def refuse_production():
         if app.config.get("IS_PRODUCTION"):
@@ -327,7 +255,6 @@ def register_demo_commands(app):
     @click.option("--as", "as_email", required=True, metavar="EMAIL",
                   help="An active admin in this database; changes are recorded under them.")
     def demo_load(mothers, seed, as_email):
-        """Fill an EMPTY local database with a made-up program."""
         import time
 
         from app.services import audit, demo, seeding, users
@@ -349,9 +276,6 @@ def register_demo_commands(app):
     @demo_group.command("check")
     @click.option("--from", "start", default="2025-01-01", show_default=True)
     def demo_check(start):
-        """Compare every month's Program Health numbers with a brute-force
-        calculation, and check the report invariants. Exits 1 on any
-        difference."""
         import datetime
 
         from app.services import metrics, reports, retention, totals, verify
@@ -421,7 +345,6 @@ def register_demo_commands(app):
     @demo_group.command("stress")
     @click.option("--year", type=int, default=None)
     def demo_stress(year):
-        """Time the slow paths on whatever is in this database."""
         import time
 
         from app.services import backup, exports, metrics, reports, totals
@@ -459,15 +382,13 @@ def clock_today():
 def register_history_commands(app):
     @app.cli.group("history")
     def history_group():
-        """Earlier months from the program director's sheets (app/services/history.py)."""
+        pass
 
     @history_group.command("import")
     @click.argument("path", type=click.Path(exists=True, dir_okay=False))
     @click.option("--as", "as_email", required=True, metavar="EMAIL",
                   help="The admin the import is recorded under.")
     def history_import(path, as_email):
-        """Load a focus-history file, as recorded, all or nothing. The same
-        file twice changes nothing. (Admins can also upload it in Settings.)"""
         from app.services import audit, history, users
 
         admin = users.find_by_email(as_email)
@@ -486,8 +407,6 @@ def register_history_commands(app):
     @history_group.command("export")
     @click.argument("path", type=click.Path(dir_okay=False, writable=True))
     def history_export(path):
-        """Write every approved session, exactly as it is now, to a history
-        file (Settings → Import earlier sheets has the same as a download)."""
         from app.services import history
 
         with open(path, "w", encoding="utf-8") as handle:
@@ -498,7 +417,7 @@ def register_history_commands(app):
 def register_batch_commands(app):
     @app.cli.group("batches")
     def batches_group():
-        """Batches (app/services/batches.py)."""
+        pass
 
     @batches_group.command("delete-date")
     @click.argument("day")
@@ -506,9 +425,6 @@ def register_batch_commands(app):
     @click.option("--count", type=int, help="How many batches you expect (required with --yes).")
     @click.option("--as", "as_email", metavar="EMAIL", help="The admin it is recorded under.")
     def batches_delete_date(day, yes, count, as_email):
-        """Permanently delete every batch dated DAY (YYYY-MM-DD), approved
-        or not, and nothing else. Lists them first; deletes only with --yes
-        and a --count that matches (D9-13)."""
         import datetime
 
         from app.models import Batch
@@ -544,15 +460,13 @@ def register_batch_commands(app):
 def register_card_commands(app):
     @app.cli.group("cards")
     def cards_group():
-        """Card numbers for mothers (generate_cards.py makes the lists)."""
+        pass
 
     @cards_group.command("load")
     @click.argument("path", type=click.Path(exists=True, dir_okay=False))
     @click.option("--as", "as_email", metavar="EMAIL", required=True,
                   help="The admin the load is recorded under.")
     def load_cards(path, as_email):
-        """Load a cards-batch-N.csv. All or nothing; the same file twice
-        changes nothing. (Admins can also upload it under Settings.)"""
         from app.extensions import db
         from app.services import audit, participants, users
 
@@ -573,7 +487,6 @@ def register_card_commands(app):
 
 
 def register_template_helpers(app):
-    """Formatting helpers available in every Jinja template."""
 
     from app.constants import (
         CONDITION_USED,
@@ -584,14 +497,12 @@ def register_template_helpers(app):
 
     @app.template_filter("money")
     def money_filter(value):
-        """1234.5 -> $1,234.50 ; None -> a dash, not $0.00."""
         if value is None:
             return "—"
         return "${:,.2f}".format(value)
 
     @app.template_filter("local_datetime")
     def local_datetime_filter(moment):
-        """A stored UTC timestamp, shown in Houston time: Oct 20, 2026 7:45 PM."""
         from app.services import clock
 
         if moment is None:
@@ -600,8 +511,6 @@ def register_template_helpers(app):
 
     @app.template_filter("duration")
     def duration_filter(seconds):
-        """Timer seconds as 0:12:05 -- the same format the page's script
-        keeps ticking (app.js)."""
         seconds = max(0, int(seconds or 0))
         return f"{seconds // 3600}:{seconds % 3600 // 60:02d}:{seconds % 60:02d}"
 

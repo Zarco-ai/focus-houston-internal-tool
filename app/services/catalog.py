@@ -1,9 +1,3 @@
-"""Reading and managing the item catalog.
-
-Item management lives here so The Center Director can add a diaper herself. Adding
-"Diapers - Size 1" with report_bucket 'diapers' needs no code change and no
-schema change -- the report bucket is just a column value.
-"""
 
 from app.constants import (
     PRICE_ENTRY_CHOICES,
@@ -17,16 +11,10 @@ from app.services import audit
 
 
 class CatalogError(Exception):
-    """Something about an item was not valid. The message is shown to the
-    person who typed it."""
-
-
-# --- Reading ---------------------------------------------------------------
+    pass
 
 
 def active_items():
-    """Every item currently in use, sorted the way the entry screen shows
-    them: by category in the intended order, then by name."""
     items = Item.query.filter_by(active=True).all()
     return _sorted(items)
 
@@ -43,7 +31,6 @@ def _sorted(items):
 
 
 def group_by_category(items):
-    """[(category_slug, [items...]), ...] in display order."""
     groups = {}
     for item in items:
         groups.setdefault(item.category, []).append(item)
@@ -56,22 +43,12 @@ def categories_in_use():
 
 
 def items_needing_a_price():
-    """The "Needs a price" list -- every manual-price item and its note.
-
-    This is the agenda for the next conversation with The Center Director. It shrinks as
-    she supplies real values through the item admin screen.
-    """
     items = Item.query.filter_by(price_entry=PRICE_ENTRY_MANUAL, active=True).all()
     return _sorted(items)
 
 
 def find_item(name, category):
-    """Look an item up by name AND category. Never by name alone -- there are
-    three different Pants."""
     return Item.query.filter_by(name=name, category=category).one_or_none()
-
-
-# --- Writing ---------------------------------------------------------------
 
 
 def _validate(name, category, report_bucket, used_multiplier, price_entry):
@@ -102,7 +79,6 @@ def _validate(name, category, report_bucket, used_multiplier, price_entry):
 
 def create_item(name, category, report_bucket, used_multiplier, price_entry,
                 unit_price_new=None, note=None):
-    """Add a new item to the catalog."""
     name, category, multiplier = _validate(
         name, category, report_bucket, used_multiplier, price_entry
     )
@@ -144,13 +120,6 @@ def create_item(name, category, report_bucket, used_multiplier, price_entry,
 def update_item(item, name=None, category=None, report_bucket=None,
                 used_multiplier=None, price_entry=None, note=None, active=None,
                 display_group=None):
-    """Change an existing item. Every change is written to the audit log.
-
-    display_group: None leaves it alone; "" means "same as the report bucket".
-
-    This does NOT change the price -- use change_price(), which adds a new
-    price row instead of overwriting the old one.
-    """
     new_name = item.name if name is None else (name or "").strip()
     new_category = item.category if category is None else (category or "").strip()
     new_bucket = item.report_bucket if report_bucket is None else report_bucket
@@ -197,11 +166,6 @@ def update_item(item, name=None, category=None, report_bucket=None,
 
 
 def change_price(item, unit_price_new, effective_from=None):
-    """Set a new price by adding a row to item_price.
-
-    Old prices are left alone, so every batch committed before today still
-    reports the number it was committed at.
-    """
     price = _parse_optional_price(unit_price_new)
     old_price = item.current_price()
 
@@ -221,15 +185,12 @@ def change_price(item, unit_price_new, effective_from=None):
 
 
 def set_active(item, active):
-    """Deactivate an item instead of deleting it. History keeps working
-    because committed lines froze their own price and rate."""
     audit.apply_change(item, "active", bool(active), "item", item.display_name)
     db.session.commit()
     return item
 
 
 def _parse_optional_price(value):
-    """A price box that may legitimately be left empty."""
     if value is None:
         return None
     if isinstance(value, str):

@@ -1,8 +1,3 @@
-"""flask batches delete-date (D9-13): deleting test batches for good.
-
-The rules: only the date given; nothing without --yes and a matching
---count; and the audit log says what went.
-"""
 
 import datetime
 import random
@@ -76,9 +71,6 @@ def test_an_intake_that_started_a_deleted_batch_stays(seeded_app, admin_user):
     assert session.batch_id is None
 
 
-# --- The page ---------------------------------------------------------------------------
-
-
 def test_the_page_deletes_that_day_and_discards_its_form_responses(client, seeded_app, admin_user):
     fifth, sixth = approved(FIFTH).id, approved(SIXTH).id
     code = card_numbers.generate(1, rng=random.Random(3))[0]
@@ -104,7 +96,7 @@ def test_the_page_deletes_that_day_and_discards_its_form_responses(client, seede
 
     form = {"date": "2026-11-05", "batch_count": "1", "response_count": "1"}
     client.post("/admin/delete-day", data=form | {"confirm": "nope"})
-    assert Batch.query.count() == 2                       # not confirmed: nothing
+    assert Batch.query.count() == 2
 
     client.post("/admin/delete-day", data=form | {"confirm": "2026-11-05"})
     assert [b.id for b in Batch.query.all()] == [sixth]

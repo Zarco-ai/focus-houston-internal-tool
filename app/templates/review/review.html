@@ -21,8 +21,7 @@
 {% endif %}
 
 {% if approval_warnings and not batch.is_committed %}
-  {# Not a blocker. Approving works; these are the loose ends it leaves. #}
-  <div class="banner banner-warn">
+    <div class="banner banner-warn">
     <strong>You can approve this now. Still unfinished:</strong>
     <ul style="margin:6px 0 0; padding-left:18px">
       {% for warning in approval_warnings %}<li>{{ warning }}</li>{% endfor %}
@@ -44,16 +43,11 @@
   <form method="post"
         action="{{ url_for('entry.set_service_type', batch_id=batch.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    {# Stay on this page. The same endpoint serves the counting screen, and its
-       default is to go back there. #}
-    <input type="hidden" name="return_to" value="review">
+        <input type="hidden" name="return_to" value="review">
     <label class="field">
       <span>Service type</span>
       <select name="service_type_id" data-autosubmit>
-        {# An approved batch has to keep a service type -- it could not have been
-           approved without one -- so do not offer an option that is only going
-           to be refused. #}
-        {% if not batch.is_committed or not batch.service_type_id %}
+                {% if not batch.is_committed or not batch.service_type_id %}
           <option value="">Not set</option>
         {% endif %}
         {% for service in service_types %}
@@ -71,8 +65,7 @@
 <h2>Items</h2>
 
 {% if lines %}
-  <!-- One form around the whole table: edit several lines, save once. -->
-  <form method="post"
+    <form method="post"
         action="{{ url_for('review.edit_lines', batch_id=batch.id) }}">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <div class="table-scroll">

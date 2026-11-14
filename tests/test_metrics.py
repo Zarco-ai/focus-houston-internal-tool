@@ -1,9 +1,3 @@
-"""The report metrics (Phase 4): the registry, the invariants, the switches.
-
-The invariants are named for what they protect. Non-Food GIK is the number
-that didn't reconcile in four of nine months of the program director's 2026 sheet
-(design doc F1-F6), so it gets the most tests.
-"""
 
 import datetime
 from decimal import Decimal
@@ -23,7 +17,6 @@ def item(name, category):
 
 
 def committed(lines=(), counts=None, date=None):
-    """lines: [(item, quantity, condition, typed unit price or None)]"""
     batch = batches.open_batch(date=date or clock.local_today(),
                                service_type_id=ServiceType.query.first().id)
     for thing, quantity, condition, price in lines:
@@ -41,19 +34,14 @@ def this_month():
 
 
 def a_mixed_month():
-    """Clothing, hygiene, household, diapers, formula and bus passes, all
-    approved this month."""
     committed([
-        (item("Coat", "clothing_adult"), 1, "new", None),                 # $72.00 clothing
-        (item("Individual Pack of Wipes", "baby_essentials"), 4, "new", None),  # hygiene
-        (item("Bottles", "baby_essentials"), 2, "used", None),            # household, 2 x $8.50 x 0.5
-        (item("Individual Diaper", "diapers"), 100, "new", None),         # 100 x $0.53
+        (item("Coat", "clothing_adult"), 1, "new", None),
+        (item("Individual Pack of Wipes", "baby_essentials"), 4, "new", None),
+        (item("Bottles", "baby_essentials"), 2, "used", None),
+        (item("Individual Diaper", "diapers"), 100, "new", None),
         (item("Formula - Similac 7oz", "baby_essentials"), 3, "new", "11.50"),
         (item("Bus Pass", "transportation"), 2, "new", "10.00"),
     ])
-
-
-# --- The registry ----------------------------------------------------------------
 
 
 def test_every_metric_key_is_unique_and_every_group_exists():
@@ -71,14 +59,11 @@ def test_every_metric_has_a_function_and_a_label():
 
 
 def test_every_attendance_box_belongs_to_a_metric():
-    """A box with no metric would be typed and never reported; a switched-
-    off metric would leave its box behind."""
     for field in FIELDS:
         assert field.metric in metrics.REGISTRY, field.name
 
 
 def test_the_template_order_is_kept():
-    """The groups come out in the FOCUS North America template's order."""
     order = [group.key for group in metrics.GROUPS]
     assert order == ["SERVED", "FOOD", "OCCUPATION", "CLOTHING", "UNDERSTANDING",
                      "SHELTER", "VOLUNTEERS", "UNIQUE", "ANNUAL", "PROGRAM_HEALTH"]
@@ -92,14 +77,11 @@ def test_every_metric_works_out_on_an_empty_database(app):
         if metric.frequency == metrics.ANNUAL:
             assert value is None
         elif metric.unit == metrics.UNIT_PERCENT:
-            assert value is None, key        # n/a: nobody to divide by
+            assert value is None, key
         elif key in ("intake_minutes_mean", "intake_minutes_median"):
-            assert value is None, key        # no intakes, no average
+            assert value is None, key
         else:
             assert value == 0, key
-
-
-# --- The invariants -----------------------------------------------------------------
 
 
 def test_non_food_gik_is_goods_value_plus_diaper_value(seeded_app):
@@ -147,8 +129,6 @@ def test_goods_count_is_clothing_hygiene_and_household_only(seeded_app):
 
 
 def test_wipes_listed_with_diapers_are_still_hygiene_money(seeded_app):
-    """display_group moves where Wipes is listed, never which number it
-    counts in."""
     committed([(item("Individual Pack of Wipes", "baby_essentials"), 1, "new", None)])
     values = metrics.values(*this_month())
 
@@ -173,9 +153,6 @@ def test_drafts_are_not_counted(seeded_app):
     assert values["individuals_served"] == 0
 
 
-# --- Attendance metrics ----------------------------------------------------------------
-
-
 def test_attendance_figures_add_up_across_batches(seeded_app):
     committed(counts={"individuals_served": 3, "volunteer_hours_tenths": 25,
                       "meals_value": Decimal("40.50")})
@@ -189,14 +166,9 @@ def test_attendance_figures_add_up_across_batches(seeded_app):
 
 
 def test_unique_counts_are_labelled_as_sums_of_per_event_counts():
-    """Phase 0 answers 6 and 6b: until participant IDs exist these are
-    added up event by event, and they say so."""
     for key in ("unique_clients_event_sum", "unique_volunteers_event_sum",
                 "unique_parishes_event_sum"):
         assert "sum of per-event counts" in metrics.REGISTRY[key].label
-
-
-# --- Annual figures ---------------------------------------------------------------------
 
 
 def test_an_annual_figure_shows_only_for_a_whole_year(app, admin_user):
@@ -228,13 +200,7 @@ def test_a_wrong_annual_figure_is_refused(app, admin_user, key, value):
         metrics.set_annual_value(2026, key, value, entered_by_id=admin_user.id)
 
 
-# --- Switching metrics off and renaming them --------------------------------------------
-
-
 def test_every_metric_is_on_by_default_except_the_ones_focus_doesnt_report(app):
-    """Phase 0 answer 16: all on. Changed 2 Nov 2026: FOCUS reports
-    Retained, so the FOCUS formula starts off, and so do the five rows FOCUS
-    doesn't report (an admin can switch any of them on)."""
     off = {s.key for s in metrics.settings() if not s.enabled}
     assert off == {"retention_focus", "meals_value", "temp_employment_placed",
                    "medical_services_served", "bus_passes_count", "transportation_value"}
@@ -280,7 +246,6 @@ def test_an_unknown_metric_key_is_refused(app):
 
 
 def test_a_switched_off_metric_still_has_its_value(seeded_app):
-    """Switching a row off hides it; it never changes what was counted."""
     committed(counts={"meals_value": Decimal("20.00")})
     metrics.update_setting("meals_value", enabled=False)
     assert metrics.values(*this_month())["meals_value"] == Decimal("20.00")
@@ -288,9 +253,6 @@ def test_a_switched_off_metric_still_has_its_value(seeded_app):
 
 def _setting(key):
     return next(s for s in metrics.settings() if s.key == key)
-
-
-# --- Whole years ----------------------------------------------------------------------
 
 
 @pytest.mark.parametrize("start, end, year", [

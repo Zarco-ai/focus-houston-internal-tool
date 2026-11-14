@@ -1,15 +1,3 @@
-"""Card numbers and participants.
-
-The card list comes from generate_cards.py as cards-batch-N.csv. Loading it
-is all-or-nothing and safe to repeat: the same file twice changes nothing,
-and a file that disagrees with what is loaded (a number moved, a batch
-reused) is refused whole, naming the row.
-
-A participant is created only from an intake survey (and, from Phase 6, a
-reviewer's explicit "create" on a form response), only on a number that is
-on the list and not yet handed out. "Handed out" is not a column: it is
-"a participant has this code", so it can't disagree with itself.
-"""
 
 import csv
 import io
@@ -26,19 +14,10 @@ MAX_CARDS_PER_FILE = card_numbers.POSSIBLE_CODES
 
 
 class CardListError(Exception):
-    """The card list can't be loaded. The message says which row and why."""
-
-
-# --- Loading the list ---------------------------------------------------------
+    pass
 
 
 def read_card_csv(text):
-    """[(batch, list_position, code)] from a cards-batch-N.csv's text.
-
-    Every row is checked before anything is loaded: the check digit, one
-    batch per file, positions 1, 2, 3... with no gaps or repeats, no
-    number twice.
-    """
     reader = csv.DictReader(io.StringIO(text))
     missing = set(CARD_CSV_COLUMNS) - set(reader.fieldnames or ())
     if missing:
@@ -77,8 +56,6 @@ def read_card_csv(text):
 
 
 def load_card_list(text):
-    """Load one batch. Returns how many numbers were added (0 if this exact
-    batch is already loaded). Audited as an import by the current actor."""
     rows = read_card_csv(text)
     batch = rows[0][0]
     codes = [code for _, _, code in rows]
@@ -114,9 +91,6 @@ def load_card_list(text):
     return len(rows)
 
 
-# --- Reading the list -------------------------------------------------------------
-
-
 def _unused():
     return (
         CardNumber.query.outerjoin(Participant, Participant.code == CardNumber.code)
@@ -125,7 +99,6 @@ def _unused():
 
 
 def next_unused_code():
-    """The next number down the printed sheets, or None if all are used."""
     card = _unused().order_by(CardNumber.batch, CardNumber.list_position).first()
     return card.code if card else None
 
@@ -143,11 +116,6 @@ def card_list_status():
 
 
 def available_code(raw):
-    """The card number typed on the survey, if it can be given out.
-
-    Raises ValueError with a sentence for the screen. Three different
-    problems, said differently, because each has a different fix.
-    """
     code = card_numbers.normalize(raw)
     if not card_numbers.is_valid(code):
         raise ValueError(
@@ -168,19 +136,10 @@ def available_code(raw):
     return code
 
 
-# --- Participants and visits ------------------------------------------------------
-
-
 def create_participant(code, created_by_id, via="intake survey"):
-    """A new participant on an unused card number. Call available_code()
-    first; the unique constraint is the last line of defence. `via` says
-    what created her, for the audit log: an intake survey, or a reviewer
-    acting on a form response."""
     participant = Participant(code=code, created_by_id=created_by_id)
     db.session.add(participant)
     db.session.flush()
-    # The audit row names the participant by id. Card numbers stay out of
-    # the log, like they stay out of URLs.
     audit.record_change(
         table_name="participant", record_id=participant.id, field="created",
         old_value=None, new_value=via, action=ACTION_CREATE,

@@ -1,13 +1,3 @@
-/* The counting screen.
- *
- * Every +, -, keypad entry, New/Used flip and typed price posts to the server
- * and gets back the new line value and the new batch total. Nothing is kept
- * only in the browser -- close the tab mid-batch and everything counted so far
- * is still there.
- *
- * Plain JavaScript on purpose. No build step, no framework. If you can read
- * this file you can change this screen.
- */
 (function (window, document) {
   "use strict";
 
@@ -18,9 +8,6 @@
 
   var LINE_URL = list.getAttribute("data-line-url");
 
-  /* Proves the request came from this page and not from some other site the
-     browser happens to have open. The server rejects any POST without it.
-     Flask-WTF looks for exactly this header name. */
   var CSRF_TOKEN = list.getAttribute("data-csrf-token");
 
   var OPEN_CATEGORIES_KEY = "focus.openCategories";
@@ -31,8 +18,6 @@
   var footerCount = document.getElementById("footer-count");
   var footerTotal = document.getElementById("footer-total");
   var errorBanner = document.getElementById("save-error");
-
-  // --- Talking to the server ------------------------------------------------
 
   function sendUpdate(row, changes) {
     var payload = {
@@ -48,8 +33,6 @@
     });
   }
 
-  /* An extra price group is addressed by its own line id, because "the
-     Stroller line" is ambiguous once there is one at $40 and one at $300. */
   function sendGroupUpdate(row, group, changes) {
     var url = LINE_URL + "/" + group.getAttribute("data-line-id");
     post(row, url, changes, function (data) {
@@ -103,10 +86,6 @@
     }
   }
 
-  // --- Putting the answer back on the screen --------------------------------
-
-  /* Store what the server just told us about one condition of one item, then
-     redraw the row. The row keeps both conditions at once. */
   function applyLine(row, line) {
     row.classList.remove("save-failed");
     row.setAttribute("data-quantity-" + line.condition, line.quantity);
@@ -122,8 +101,6 @@
     updateCategoryBadge(categoryOf(row));
   }
 
-  /* Same idea for one extra price group, which keeps its state on itself
-     rather than on the row. */
   function applyGroup(row, group, line) {
     row.classList.remove("save-failed");
     group.setAttribute("data-quantity", line.quantity);
@@ -190,8 +167,7 @@
         banner.textContent = "Not saved yet — " + batch.reasons.join(" ");
         banner.className = "banner banner-warn";
       } else if (batch.warnings.length) {
-        // Saved, but something on it is still unfinished. A missing price does
-        // not hold the batch back; it goes to the review queue instead.
+
         banner.textContent = "Saved. " + batch.warnings.join(" ");
         banner.className = "banner banner-warn";
       } else {
@@ -211,12 +187,8 @@
     });
   }
 
-  // --- Reading and writing a row's state ------------------------------------
-
   var CONDITIONS = ["new", "used"];
 
-  /* Which condition the row is currently showing. The other one is still
-     there, held in the row's data attributes. */
   function conditionOf(row) {
     return row.getAttribute("data-condition") || "new";
   }
@@ -238,8 +210,6 @@
     return row.getAttribute("data-price-" + (condition || conditionOf(row))) || "";
   }
 
-  /* The row's own price box. Extra price groups come after it in the markup,
-     so this always finds the main one. */
   function priceOf(row) {
     var input = row.querySelector('[data-role="price-input"]');
     return input ? input.value : null;
@@ -254,9 +224,6 @@
     return row.getAttribute("data-manual") === "1";
   }
 
-  /* Draw the row for whichever condition it is showing. Everything on screen
-     comes from the data attributes, so this is the only place that decides
-     what a row looks like. */
   function renderRow(row) {
     var condition = conditionOf(row);
     var other = otherConditionOf(row);
@@ -282,8 +249,6 @@
       valueEl.textContent = quantity > 0 && value !== "" ? formatMoney(value) : "";
     }
 
-    // Extra price groups belong to one condition each. Show only the ones for
-    // the side being displayed, and point the "add another" button at it.
     var allGroups = groupsFor(row);
     var extraHere = 0;
     var extraOther = 0;
@@ -302,15 +267,11 @@
       addPriceCondition.value = condition;
     }
 
-    // The row counts as "in the batch" if EITHER condition has a quantity,
-    // including anything recorded at a second price.
     row.classList.toggle(
       "has-quantity",
       quantity + extraHere > 0 || otherQuantity + extraOther > 0
     );
 
-    // What is counted on the other side, so the toggle never hides work.
-    // Anything recorded there at a second price counts too.
     var otherEl = row.querySelector('[data-role="other-condition"]');
     if (otherEl) {
       var otherTotal = otherQuantity + extraOther;
@@ -326,18 +287,13 @@
       }
     }
 
-    // A manual item's price box appears the moment this condition has a
-    // quantity, and each condition keeps its own price.
     var box = row.querySelector('[data-role="price-box"]');
     if (box) {
-      // Stays open while a second price is recorded here, even if the first
-      // one has been counted back down to zero -- otherwise dropping the main
-      // quantity would hide real counted items.
+
       box.hidden = quantity <= 0 && extraHere === 0;
 
       var input = row.querySelector('[data-role="price-input"]');
-      // Do not fight her fingers: leave the box alone while she is typing in
-      // it, or a slow save would overwrite half-typed digits.
+
       if (input && document.activeElement !== input) {
         input.value = storedPriceOf(row, condition);
       }
@@ -370,8 +326,6 @@
     return row.closest("details.category");
   }
 
-  // --- Category badges ------------------------------------------------------
-
   function updateCategoryBadge(category) {
     if (!category) {
       return;
@@ -379,11 +333,11 @@
     var counted = 0;
     var rows = category.querySelectorAll(".item-row");
     for (var i = 0; i < rows.length; i++) {
-      // Both conditions count towards the badge.
+
       for (var c = 0; c < CONDITIONS.length; c++) {
         counted += quantityOf(rows[i], CONDITIONS[c]);
       }
-      // So does anything recorded at a second price.
+
       var groups = groupsFor(rows[i]);
       for (var g = 0; g < groups.length; g++) {
         counted += groupQuantity(groups[g]);
@@ -396,8 +350,6 @@
       badge.hidden = counted === 0;
     }
 
-    // A section holding counted items stays open. Work in progress is never
-    // hidden behind a closed accordion.
     if (counted > 0) {
       category.open = true;
     }
@@ -410,11 +362,9 @@
     }
   }
 
-  // --- Remembering which sections are open ----------------------------------
-
   function saveOpenCategories() {
     if (searchInput && searchInput.value.trim()) {
-      return; // searching temporarily opens things; do not save that
+      return;
     }
     var open = [];
     var categories = list.querySelectorAll("details.category");
@@ -426,7 +376,7 @@
     try {
       window.localStorage.setItem(OPEN_CATEGORIES_KEY, JSON.stringify(open));
     } catch (error) {
-      /* Private browsing, or storage full. Not worth interrupting her for. */
+
     }
   }
 
@@ -444,8 +394,6 @@
       categories[i].open = saved.indexOf(slug) !== -1;
     }
   }
-
-  // --- Search ---------------------------------------------------------------
 
   function runSearch() {
     var query = searchInput.value.trim().toLowerCase();
@@ -473,8 +421,6 @@
         anyVisible = true;
       }
 
-      // Searching opens whatever it finds, so results are never hidden behind
-      // a closed section. Clearing the search puts things back as they were.
       if (query !== "") {
         category.open = matchesHere > 0;
       }
@@ -488,16 +434,12 @@
     noResults.hidden = anyVisible || query === "";
   }
 
-  // --- Wiring ---------------------------------------------------------------
-
   list.addEventListener("click", function (event) {
     var row = event.target.closest(".item-row");
     if (!row) {
       return;
     }
 
-    // A tap inside an extra price group belongs to that group's own line, not
-    // to the row's main one.
     var group = event.target.closest('[data-role="price-group"]');
 
     if (event.target.closest(".step-up")) {
@@ -517,8 +459,7 @@
     }
 
     if (event.target.closest(".step-down")) {
-      // Never below zero. The server clamps too, this just avoids a pointless
-      // round trip.
+
       if (group) {
         sendGroupUpdate(row, group, {
           quantity: Math.max(0, groupQuantity(group) - 1),
@@ -536,9 +477,7 @@
 
     var conditionButton = event.target.closest(".condition-toggle button");
     if (conditionButton) {
-      // Switching sides only changes what the row is showing. Nothing is sent:
-      // the new ones already counted stay exactly as they are, and the used
-      // ones are their own line with their own quantity and price.
+
       row.setAttribute(
         "data-condition",
         conditionButton.getAttribute("data-condition")
@@ -547,7 +486,6 @@
       return;
     }
 
-    // Tapping "also 2 used" flips to that side.
     if (event.target.closest('[data-role="other-condition"]')) {
       row.setAttribute("data-condition", otherConditionOf(row));
       renderRow(row);
@@ -583,8 +521,6 @@
     }
   });
 
-  /* Typed prices. Waiting a moment after the last keystroke means we save one
-     price instead of one per digit. */
   var priceTimers = new window.WeakMap();
 
   list.addEventListener("input", function (event) {
@@ -632,8 +568,6 @@
     });
   }
 
-  // --- The custom item form -------------------------------------------------
-
   var customModal = document.getElementById("custom-modal");
   var openCustom = document.getElementById("open-custom");
   var cancelCustom = document.getElementById("custom-cancel");
@@ -660,8 +594,6 @@
       }
     });
   }
-
-  // --- Start ----------------------------------------------------------------
 
   restoreOpenCategories();
   renderAllRows();

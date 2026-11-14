@@ -1,9 +1,3 @@
-"""All database tables, imported in one place.
-
-Import from here (``from app.models import Item, Batch``) so SQLAlchemy always
-sees every model -- which is also how the migration tooling finds them when
-it compares the models against the database.
-"""
 
 from app.models.audit import AuditLog
 from app.models.batch import Attendance, Batch, LineItem

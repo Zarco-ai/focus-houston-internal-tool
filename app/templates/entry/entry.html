@@ -15,10 +15,7 @@
       <input type="hidden" name="return_to" value="entry">
       <select name="service_type_id" data-autosubmit
               aria-label="Service type">
-        {# Same rule as the review screen: once the batch is saved it keeps a
-           service type, so the empty option is only offered while it can still
-           be answered. #}
-        {% if not batch.is_committed or not batch.service_type_id %}
+                {% if not batch.is_committed or not batch.service_type_id %}
           <option value="">Service type…</option>
         {% endif %}
         {% for service in service_types %}
@@ -37,9 +34,7 @@
       Not saved yet — {{ blocking_reasons|join(' ') }}
     </p>
   {% elif commit_mode == 'auto' and approval_warnings %}
-    {# Saved, with something still unfinished on it. A missing price does not
-       hold the batch back -- it goes to the review queue instead. #}
-    <p class="banner banner-warn" id="auto-banner">
+        <p class="banner banner-warn" id="auto-banner">
       Saved. {{ approval_warnings|join(' ') }}
     </p>
   {% elif commit_mode == 'auto' %}
@@ -74,13 +69,7 @@
           {% set shown = row.by_condition[row.shown] %}
           {% set other_key = 'used' if row.shown == 'new' else 'new' %}
           {% set other = row.by_condition[other_key] %}
-          {#
-            Each row holds a quantity, a price and a value for BOTH conditions,
-            because the same item can be counted new and used in one batch. The
-            New/Used toggle switches which one the row is showing; it does not
-            move anything from one to the other.
-          #}
-          <article id="item-{{ item.id }}"
+                    <article id="item-{{ item.id }}"
                    class="item-row{% if shown.quantity > 0 or other.quantity > 0 %} has-quantity{% endif %}"
                    data-item-id="{{ item.id }}"
                    data-manual="{{ 1 if row.manual else 0 }}"
@@ -130,9 +119,7 @@
               </span>
             </div>
 
-            {# What is counted in the OTHER condition, so it is never hidden
-               behind the toggle. Tapping it switches to that side. #}
-            <button type="button" class="other-condition"
+                        <button type="button" class="other-condition"
                     data-role="other-condition"
                     {% if other.quantity == 0 %}hidden{% endif %}>
               also {{ other.quantity }} {{ other_key }}{% if other.value is not none %} · {{ other.value|money }}{% endif %}
@@ -152,13 +139,7 @@
                   Price for the <strong data-role="price-condition">{{ row.shown }}</strong> ones.
                 </p>
 
-                {#
-                  The same item recorded again at a different value -- two
-                  strollers worth $40 and $300 cannot share one price. Each
-                  group is its own line, with its own quantity and price.
-                  Rendered for both conditions; the toggle shows one at a time.
-                #}
-                {% for condition, state in row.by_condition.items() %}
+                                {% for condition, state in row.by_condition.items() %}
                   {% for extra in state.extras %}
                     <div class="price-group" data-role="price-group"
                          data-for-condition="{{ condition }}"
@@ -250,8 +231,6 @@
 
 {% block scripts %}
 
-<!-- The numeric keypad. Custom rather than the device keyboard so it behaves
-     identically on a phone and on a laptop. -->
 <div class="modal" id="keypad-modal" hidden>
   <div class="modal-card keypad" role="dialog" aria-modal="true"
        aria-labelledby="keypad-item">
@@ -272,8 +251,6 @@
   </div>
 </div>
 
-<!-- Custom item entry. Separate from the keypad: the keypad sets a quantity
-     for an item that already exists, this adds one that does not. -->
 <div class="modal" id="custom-modal" hidden>
   <form class="modal-card" method="post"
         action="{{ url_for('entry.add_custom_item', batch_id=batch.id) }}">

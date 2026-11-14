@@ -1,9 +1,3 @@
-"""The Responses page: the Google Form sync and its review queue.
-
-Everyone signed in can see it and review responses (reviewing is part of
-staff's job). Mapping event names and merging two card numbers are admin
-pages (app/views/admin.py), because they change what past visits count as.
-"""
 
 from flask import Blueprint, current_app, flash, g, redirect, render_template, request, url_for
 
@@ -19,8 +13,6 @@ def _sync_limit():
 
 
 def sync_if_stale():
-    """Sync when the page opens, if the last attempt is a few minutes old.
-    Returns a sentence about the setup if the sync can't be configured."""
     try:
         source = form_sync.configured_source(current_app.config)
     except form_sync.SyncError as error:

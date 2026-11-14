@@ -1,9 +1,3 @@
-"""Filling FOCUS's own monthly report Sheet from Totals (D9-11).
-
-The rules: the numbers are the Totals page's; a batch note (which can hold a
-mother's name) is never written; the template is never deleted or written
-to; and a changed template is refused rather than filled wrongly.
-"""
 
 import datetime
 import json
@@ -74,9 +68,6 @@ def written(requests):
     return json.dumps(requests)
 
 
-# --- The rows -----------------------------------------------------------------------------
-
-
 def test_the_totals_row_is_the_totals_pages_numbers(october):
     _, totals = report_sheet.sheet_rows(*OCTOBER)
     values = metrics.values(*OCTOBER)
@@ -95,7 +86,6 @@ def test_a_session_row_then_its_items_with_no_description_on_the_session(october
 
 
 def test_bus_passes_get_no_row_of_their_own(october):
-    """The Sheet has no bus-pass column; the session row stays."""
     rows, _ = report_sheet.sheet_rows(*OCTOBER)
     labels = [row[KEYS.index("description")] for row in rows]
     assert "Bus passes" not in labels
@@ -106,9 +96,6 @@ def test_a_batch_note_is_never_written(october):
     target = FakeTarget()
     report_sheet.fill(target, *OCTOBER, "October 2026")
     assert "NAME-IN-THE-NOTE" not in written(target.applied)
-
-
-# --- The requests -------------------------------------------------------------------------
 
 
 def test_the_template_is_copied_and_never_written(october):
@@ -174,9 +161,6 @@ def test_a_tab_name_has_no_characters_sheets_refuses():
     assert report_sheet.tab_title("a/b:c") == "a-b-c"
 
 
-# --- The button ---------------------------------------------------------------------------
-
-
 @pytest.fixture
 def target(monkeypatch, seeded_app, october):
     fake = FakeTarget()
@@ -211,9 +195,6 @@ def test_a_google_error_is_shown_and_nothing_is_logged(client, target):
     text = client.post("/totals/report-sheet?month=2026-10", follow_redirects=True).get_data(as_text=True)
     assert "Google said 500" in text
     assert AuditLog.query.filter_by(action="export").count() == 0
-
-
-# --- Google -------------------------------------------------------------------------------
 
 
 def test_the_real_sheet_asks_for_write_access_and_sends_one_batch_update(monkeypatch):
@@ -270,8 +251,6 @@ def test_configured_target_needs_the_sheet_and_the_key():
 
 
 def test_a_name_typed_like_a_formula_is_written_as_text(october):
-    """A formula in a report is how the 2026 sheet broke, and how a
-    malicious cell runs. An admin can name a service type anything."""
     ServiceType.query.first().name = '=HYPERLINK("http://example.invalid","click")'
     target = FakeTarget()
     report_sheet.fill(target, *OCTOBER, "October 2026")

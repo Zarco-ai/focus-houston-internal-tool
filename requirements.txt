@@ -1,12 +1,3 @@
-# What the app needs to run. Direct dependencies only, each pinned.
-#
-# requirements.lock pins EVERY package, including the ones these pull in, with
-# hashes -- that is what production installs. Regenerate it after changing
-# this file:
-#
-#   pip-compile --generate-hashes --strip-extras -o requirements.lock requirements.txt
-#
-# Test and review tools are in requirements-dev.txt.
 
 Flask==3.1.3
 Flask-SQLAlchemy==3.1.1
@@ -15,34 +6,18 @@ Flask-Migrate==4.1.0
 SQLAlchemy==2.0.36
 psycopg[binary]==3.3.6
 
-# Sign in with Google (OpenID Connect). Authlib's Flask client uses requests
-# to talk to Google.
 Authlib==1.9.1
 requests==2.34.2
 
-# Reading the Google Form's response Sheet (Phase 6) as a service account
-# with read-only access. Google's own library signs the service account's
-# token request; the Sheets API itself is two plain requests calls, so
-# gspread (a much bigger wrapper) isn't needed.
 google-auth==2.62.0
 
-# Rate limits on the sign-in routes (and Sync now, from Phase 6).
 Flask-Limiter==4.1.1
 
-# The production web server. Configured in gunicorn.conf.py.
 gunicorn==26.2.0
 
-# Reading the Valuations workbook (Phase 3). (The .xlsx reports it also
-# wrote were removed on 11 Nov 2026: the report Sheet replaced them.) An .xlsx file is zipped XML, and openpyxl
-# uses defusedxml when it is installed, which refuses XML tricks such as
-# "billion laughs" (a tiny file that expands to gigabytes in memory).
 openpyxl==3.1.5
 defusedxml==0.7.1
 
-# Time-zone data shipped as a package, so America/Chicago is available even on
-# a server image without the system zone files. See app/services/clock.py.
 tzdata==2026.5
 
-# Not used directly -- Flask depends on it -- but 3.1.8 has a published
-# advisory (PYSEC-2026-4312), so this sets the floor.
 Werkzeug>=3.1.9

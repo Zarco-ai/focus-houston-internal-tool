@@ -1,24 +1,3 @@
-"""Every number the Totals page reports, and how each one is worked out.
-
-The rows and their order follow the FOCUS North America template
-(references/annual summary report.pdf), plus the two head counts that open
-The program director's own sheet. Each metric is one entry in METRICS:
-
-  key         stable name, used by the admin's on/off switch and in exports
-  label       the default wording; an admin can change it (metric_definition)
-  group       the coloured band it sits in
-  unit        count | money | hours
-  frequency   monthly (worked out for any period) | annual (typed once a year)
-  source      where the number comes from, shown on the page
-  compute     the function that works it out
-
-Labels and on/off are data an admin controls. The math is code, one
-function per key, and tests/test_metrics.py checks every key has both.
-
-Nothing here is ever typed as a total. Non-Food GIK in particular is always
-computed from its two named inputs: finding F1-F6 in the design doc is what
-happens when a total is a cell someone fills in.
-"""
 
 import datetime
 import statistics
@@ -61,8 +40,6 @@ class Group:
     note: str = ""
 
 
-# In the template's order. SERVED is the director's, not the template's: her
-# sheet opens with these two counts.
 GROUPS = (
     Group("SERVED", "SERVED", "From the program director's monthly sheet; not on the FOCUS North America template."),
     Group("FOOD", "FOOD"),
@@ -82,16 +59,7 @@ GROUPS = (
 GROUPS_BY_KEY = {group.key: group for group in GROUPS}
 
 
-# --- The period being reported ----------------------------------------------
-
-
 class Period:
-    """Everything the metric functions read, fetched once.
-
-    Two queries for the whole page: the report buckets (from approved line
-    items, via totals.bucket_totals) and the attendance sums. Plus the annual
-    figures when the period is exactly one calendar year.
-    """
 
     def __init__(self, start, end):
         self.start = start
@@ -101,7 +69,6 @@ class Period:
         self.year = whole_year(start, end)
         self.annual = _annual_values(self.year) if self.year else {}
 
-    # Worked out only if a Program Health row asks, and once for all of them.
     @cached_property
     def retention(self):
         return retention.measure(self.start, self.end)
@@ -118,14 +85,12 @@ class Period:
 
 
 def whole_year(start, end):
-    """The year, if start..end is exactly Jan 1 to Dec 31 of it."""
     if (start.month, start.day) == (1, 1) and end == datetime.date(start.year, 12, 31):
         return start.year
     return None
 
 
 def _attendance_sums(start, end):
-    """{attendance column: total over approved batches in the range}."""
     columns = [
         sa.func.coalesce(sa.func.sum(getattr(Attendance, f.name)), 0)
         for f in ATTENDANCE_FIELDS
@@ -141,8 +106,6 @@ def _attendance_sums(start, end):
         )
         .one()
     )
-    # SUM() and COALESCE() take their column's type, so the Money column's
-    # total comes back already in dollars (tests/test_metrics.py checks).
     return dict(zip((f.name for f in ATTENDANCE_FIELDS), row))
 
 
@@ -151,16 +114,11 @@ def _annual_values(year):
     return {row.metric_key: row.value for row in rows}
 
 
-# --- One function per metric -------------------------------------------------
-
-
 def _attendance(name):
     return lambda period: period.attendance[name]
 
 
 def goods_count(period):
-    """# of clothing / hygiene / household goods: the three buckets FOCUS
-    North America reports as one, named explicitly."""
     return sum(period.bucket_quantity(key) for key in COMBINED_GOODS_BUCKETS)
 
 
@@ -176,18 +134,10 @@ def diapers_value(period):
 
 
 def non_food_gik(period):
-    """Non-Food GIK = clothing/hygiene/household value + diaper value.
-
-    Exactly these two, by name. Formula and food are Food GIK; bus passes are
-    transportation assistance and never goods in kind. Neither can reach
-    this number however they are priced -- tests/test_metrics.py holds that.
-    """
     return goods_value(period) + diapers_value(period)
 
 
 def food_value(period):
-    """Food GIK: food items plus formula (Phase 0 answer 8b: formula is
-    Food GIK, typed per receipt, and never Non-Food)."""
     return period.bucket_value(BUCKET_FOOD) + period.bucket_value(BUCKET_FORMULA)
 
 
@@ -197,9 +147,6 @@ def volunteer_hours(period):
 
 def _annual(key):
     return lambda period: period.annual.get(key)
-
-
-# --- Program Health (Phase 7) -------------------------------------------------------------
 
 
 def _one_place(value):
@@ -220,8 +167,6 @@ def intake_minutes_mean(period):
 
 
 def intake_minutes_median(period):
-    """The middle intake time. One forgotten timer that slipped through
-    moves the mean a lot and the median hardly at all."""
     minutes = period.intake_minutes
     return _one_place(Decimal(str(statistics.median(minutes)))) if minutes else None
 
@@ -283,35 +228,25 @@ class Metric:
     compute: Callable = field(repr=False)
     definition: str = ""
     frequency: str = MONTHLY
-    # Counts shown under the number, so a rate on eight mothers is seen to
-    # be a rate on eight mothers (the build prompt: always show the counts).
     detail: Callable = field(default=None, repr=False)
-    # Switched on until an admin says otherwise -- except where the client
-    # decided a row should start off (Phase 0 answer 16 was "all on").
     on_by_default: bool = True
 
 
 METRICS = (
-    # SERVED
     Metric("individuals_served", "# of Individuals Served", "SERVED", UNIT_COUNT, REVIEW,
            _attendance("individuals_served")),
     Metric("children_served", "# of Children Served", "SERVED", UNIT_COUNT, REVIEW,
            _attendance("children_served")),
-    # FOOD
     Metric("formula_containers", "# of Baby Formula Containers Distributed", "FOOD",
            UNIT_COUNT, ITEMS, lambda p: p.bucket_quantity(BUCKET_FORMULA),
            "Quantity of items in the Baby Formula bucket."),
-    # Off by default: FOCUS doesn't report these five (the client's decision,
-    # 2 Nov 2026). They're still recorded; an admin can switch them on.
     Metric("meals_value", "Value ($) of Meals Provided (GIK)", "FOOD", UNIT_MONEY, REVIEW,
            _attendance("meals_value"), on_by_default=False),
     Metric("food_value", "Value ($) of Food Distributed (GIK)", "FOOD", UNIT_MONEY, ITEMS,
            food_value, "Food and Baby Formula buckets. Formula is Food GIK, never Non-Food."),
-    # OCCUPATION
     Metric("temp_employment_placed", "# of Temporary Employment Assignments Placed",
            "OCCUPATION", UNIT_COUNT, REVIEW, _attendance("temp_employment_placed"),
            on_by_default=False),
-    # CLOTHING
     Metric("goods_count", "# of Clothing / Hygiene Products / Household Goods Distributed",
            "CLOTHING", UNIT_COUNT, ITEMS, goods_count,
            "Clothing, Hygiene and Household Goods buckets."),
@@ -326,7 +261,6 @@ METRICS = (
     Metric("non_food_gik", "Non-Food GIK $'s", "CLOTHING", UNIT_MONEY, "Computed",
            non_food_gik, "Value of clothing / hygiene / household + value of diapers. "
                          "Never typed."),
-    # UNDERSTANDING
     Metric("education_participants_unique", "# of Unique Education Participants",
            "UNDERSTANDING", UNIT_COUNT, REVIEW, _attendance("education_participants_unique"),
            "Different people at each class, added up over the period."),
@@ -339,7 +273,6 @@ METRICS = (
            UNIT_COUNT, REVIEW, _attendance("medical_services_served"), on_by_default=False),
     Metric("case_management_served", "# of Individuals Served with Case Management",
            "UNDERSTANDING", UNIT_COUNT, REVIEW, _attendance("case_management_served")),
-    # SHELTER
     Metric("bus_passes_count", "# of Bus Passes / Transportation Assistance Distributed",
            "SHELTER", UNIT_COUNT, ITEMS, lambda p: p.bucket_quantity(BUCKET_TRANSPORTATION),
            "Transportation Assistance bucket.", on_by_default=False),
@@ -347,7 +280,6 @@ METRICS = (
            UNIT_MONEY, ITEMS, lambda p: p.bucket_value(BUCKET_TRANSPORTATION),
            "Transportation Assistance bucket. Not goods in kind: never in Non-Food GIK.",
            on_by_default=False),
-    # VOLUNTEERS
     Metric("volunteers_total", "# of Total Volunteers", "VOLUNTEERS", UNIT_COUNT, REVIEW,
            _attendance("volunteers_total")),
     Metric("volunteer_hours", "# of Total Volunteer Hours (# of Event Hours x # of Volunteers)",
@@ -355,7 +287,6 @@ METRICS = (
            "Typed per event as total hours (Phase 0 answer 7)."),
     Metric("volunteer_opportunities", "# of Volunteer Opportunities Offered", "VOLUNTEERS",
            UNIT_COUNT, REVIEW, _attendance("volunteer_opportunities")),
-    # UNIQUE
     Metric("unique_clients_distinct", "# of Unique Clients Served", "UNIQUE", UNIT_COUNT,
            "Visits (intake survey and Google Form)",
            lambda p: retention.distinct_people_with_visits(p.start, p.end),
@@ -368,7 +299,6 @@ METRICS = (
     Metric("unique_parishes_event_sum",
            "# of Unique Parishes Represented (sum of per-event counts)", "UNIQUE",
            UNIT_COUNT, REVIEW, _attendance("unique_parishes_event_count")),
-    # ANNUAL METRICS
     Metric("advisory_board_members", "# of Advisory Board Members", "ANNUAL", UNIT_COUNT,
            TYPED_YEARLY, _annual("advisory_board_members"), frequency=ANNUAL),
     Metric("advisory_board_parishes", "# of Parishes Represented on Advisory Board",
@@ -380,7 +310,6 @@ METRICS = (
            TYPED_YEARLY, _annual("monthly_donors"), frequency=ANNUAL),
     Metric("parish_donors", "# of Parish Donors", "ANNUAL", UNIT_COUNT, TYPED_YEARLY,
            _annual("parish_donors"), frequency=ANNUAL),
-    # PROGRAM HEALTH
     Metric("intakes_timed", "# of Intakes (with a counted time)", "PROGRAM_HEALTH", UNIT_COUNT,
            INTAKES, intake_count, "Intake surveys dated in the period with a time that counts.",
            detail=_intake_detail),
@@ -395,9 +324,6 @@ METRICS = (
            VISITS, lambda p: p.retention.retention_focus,
            "(E − N) ÷ S. Can pass 100% when mothers who had lapsed come back.",
            detail=_retention_detail,
-           # Off by default (the client's decision, 2 Nov 2026): FOCUS reports
-           # Retained, which stays between 0 and 100%. An admin can switch
-           # this back on (docs/VERIFICATION.md compares the two).
            on_by_default=False),
     Metric("retained", "Retained (active at both start and end)", "PROGRAM_HEALTH",
            UNIT_PERCENT, VISITS, lambda p: p.retention.retained_rate,
@@ -416,13 +342,8 @@ REGISTRY = {metric.key: metric for metric in METRICS}
 ANNUAL_METRICS = tuple(metric for metric in METRICS if metric.frequency == ANNUAL)
 
 
-# --- What an admin has chosen -----------------------------------------------
-
-
 @dataclass
 class Setting:
-    """A metric as it stands: the code's definition plus the admin's label
-    and switch."""
 
     metric: Metric
     label: str
@@ -438,8 +359,6 @@ class Setting:
 
 
 def settings():
-    """Every metric, in report order, with the admin's choices applied. A
-    row whose key the code no longer has is ignored, not shown."""
     rows = {row.key: row for row in MetricDefinition.query.all()}
     result = []
     for metric in METRICS:
@@ -462,8 +381,6 @@ def is_enabled(key):
 
 
 def update_setting(key, label=None, enabled=None):
-    """Change a metric's label or switch it on or off. Audited. A blank
-    label puts the default back. Returns True if anything changed."""
     metric = REGISTRY.get(key)
     if metric is None:
         raise ValueError(f"There is no metric called '{key}'.")
@@ -490,16 +407,11 @@ def update_setting(key, label=None, enabled=None):
     return changed
 
 
-# --- Annual figures -----------------------------------------------------------
-
-
 def annual_values(year):
-    """{metric key: AnnualMetricValue} for one year."""
     return {row.metric_key: row for row in AnnualMetricValue.query.filter_by(year=year)}
 
 
 def set_annual_value(year, key, value, entered_by_id):
-    """Type, change or clear (value None) one annual figure. Audited."""
     if key not in REGISTRY or REGISTRY[key].frequency != ANNUAL:
         raise ValueError(f"'{key}' isn't an annual figure.")
     if not 2000 <= int(year) <= 2100:
@@ -535,15 +447,12 @@ def set_annual_value(year, key, value, entered_by_id):
     return True
 
 
-# --- The report ------------------------------------------------------------------
-
-
 @dataclass
 class Row:
     key: str
     label: str
     unit: str
-    value: object          # int, Decimal, or None when not available
+    value: object
     source: str
     definition: str
     frequency: str
@@ -561,11 +470,6 @@ class ReportGroup:
 
 
 def report(start, end, period=None):
-    """Every switched-on metric for the period, in groups, in template order.
-
-    A group with nothing switched on is left out. An annual figure is None
-    unless the period is a whole calendar year (and something was typed).
-    """
     period = period or Period(start, end)
     by_group = {}
     for setting in settings():
@@ -586,7 +490,5 @@ def report(start, end, period=None):
 
 
 def values(start, end):
-    """{metric key: value} for every metric, switched on or not. For tests,
-    exports and anything that needs one number by name."""
     period = Period(start, end)
     return {metric.key: metric.compute(period) for metric in METRICS}

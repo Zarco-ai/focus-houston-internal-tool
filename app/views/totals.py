@@ -1,10 +1,3 @@
-"""The Totals page and the line-item CSV export.
-
-Every switched-on metric for a period, grouped like the FOCUS North America
-template (app/services/metrics.py), then the detail by report bucket and the
-batches behind it. The period is a month (the default), a whole year, or any
-range; the page prints cleanly for filing.
-"""
 
 import datetime
 
@@ -23,8 +16,6 @@ MONTH_NAMES = ("January", "February", "March", "April", "May", "June", "July",
 
 @totals_bp.route("/totals")
 def index():
-    # Program Health counts visits from the Google Form, so bring them in
-    # first if the last sync is a few minutes old (D6-3: from Phase 7).
     from app.views.responses import sync_if_stale
 
     sync_if_stale()
@@ -56,8 +47,6 @@ def _report_sheet_limit():
 @totals_bp.route("/totals/report-sheet", methods=["POST"])
 @limiter.limit(_report_sheet_limit)
 def fill_report_sheet():
-    """Admin-only (app/auth.py). The period comes in the query string, the
-    same as the page's own."""
     period = _period_from_request()
     back = redirect(url_for("totals.index", **request.args) + "#reports")
     try:
@@ -91,11 +80,6 @@ def export():
 
 
 def _period_from_request():
-    """The period asked for: ?month=2026-10, ?year=2026, or ?start=&end=.
-
-    Anything missing or unreadable falls back to the current month -- the
-    page always shows something, and says what it is showing.
-    """
     today = clock.local_today()
     args = request.args
     error = None
@@ -121,7 +105,6 @@ def _period_from_request():
         start, end = totals_service.month_range(today.year, today.month)
         kind = "month"
 
-    # A custom range that happens to be a whole month or year is shown as one.
     if kind == "custom":
         if metrics.whole_year(start, end):
             kind = "year"
@@ -152,7 +135,6 @@ def _label(kind, start, end):
 
 
 def _step_url(kind, start, step):
-    """The month or year before / after. None for a custom range."""
     if kind == "month":
         index = start.year * 12 + (start.month - 1) + step
         return url_for("totals.index", month=f"{index // 12:04d}-{index % 12 + 1:02d}")

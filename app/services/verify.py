@@ -1,14 +1,3 @@
-"""A second, deliberately simple way of computing the Program Health numbers.
-
-app/services/retention.py is written to be quick: it bisects sorted visit
-dates. This module answers the same questions the slow, obvious way -- walk
-every day, ask "was her last visit within the window?" -- so that the two
-can be compared on thousands of made-up mothers (flask demo check, and
-tests/test_verification.py). If they ever disagree, one of them is wrong,
-and the disagreement says on which day for which mother.
-
-Nothing in the app uses this to report anything.
-"""
 
 import datetime
 
@@ -16,7 +5,6 @@ ONE_DAY = datetime.timedelta(days=1)
 
 
 def active_on(dates, day, window):
-    """Walk backwards from `day` for `window` days looking for a visit."""
     visits = set(dates)
     for back in range(window + 1):
         if day - datetime.timedelta(days=back) in visits:
@@ -25,7 +13,6 @@ def active_on(dates, day, window):
 
 
 def separations_between(dates, start, end, window):
-    """Days in start..end on which she went from active to not active."""
     count = 0
     day = start
     while day <= end:
@@ -36,7 +23,6 @@ def separations_between(dates, start, end, window):
 
 
 def measure(people, start, end, window, today):
-    """The same numbers as retention.measure(), computed by brute force."""
     measured_to = min(end, today)
     out = dict(S=0, E=0, N=0, R=0, returned=0, new_still_active=0, separations=0,
                engaged=0, not_engaged=0, maturing=0)
@@ -71,13 +57,10 @@ FIELDS = ("S", "E", "N", "R", "returned", "new_still_active", "separations",
 
 
 def compare(fast, slow):
-    """[(field, fast value, slow value)] for every field that differs."""
     return [(f, getattr(fast, f), slow[f]) for f in FIELDS if getattr(fast, f) != slow[f]]
 
 
 def intake_minutes(start, end):
-    """Counted intake times, worked out straight from the rows: surveys in
-    the period whose session has a time and isn't waiting to be checked."""
     from app.models import IntakeSurvey
     from app.services import intake
 
@@ -95,8 +78,6 @@ def intake_minutes(start, end):
 
 
 def median(values):
-    """Middle value (mean of the middle two), to a tenth: written out by hand
-    rather than with statistics.median, which the app uses."""
     from decimal import ROUND_HALF_UP, Decimal
 
     ordered = sorted(values)

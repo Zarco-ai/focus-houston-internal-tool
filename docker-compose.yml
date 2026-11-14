@@ -1,22 +1,3 @@
-# Local PostgreSQL for development and tests.
-#
-#   docker compose up -d        start it (Docker Desktop must be running)
-#   docker compose down         stop it (the dev data survives)
-#   docker compose down -v      stop it and delete the dev data too
-#
-# One container, two databases:
-#   focus_dev   what run.py and seed.py use
-#   focus_test  what pytest uses -- emptied between every test
-#
-# PostgreSQL 18 because that is what Render creates new databases with
-# (checked 2026-10-20). Testing against a different major version than
-# production would defeat the point of testing on PostgreSQL at all.
-#
-# The password below is for this laptop only. It is not a secret and is never
-# used anywhere else: production credentials live only in Render's environment
-# variables. The port is bound to 127.0.0.1, so nothing else on the network
-# can reach this database, and it is 5433 so it does not collide with a
-# Homebrew PostgreSQL already listening on 5432.
 
 services:
   db:
@@ -25,14 +6,11 @@ services:
       POSTGRES_USER: focus
       POSTGRES_PASSWORD: focus-local-only
       POSTGRES_DB: focus_dev
-      # Render runs in UTC. So does this, so a time-zone bug that would only
-      # show up in production shows up here too.
       TZ: UTC
       PGTZ: UTC
     ports:
       - "127.0.0.1:5433:5432"
     volumes:
-      # PostgreSQL 18's image keeps its data under /var/lib/postgresql.
       - focus_pgdata:/var/lib/postgresql
       - ./docker/initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:

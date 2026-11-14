@@ -1,14 +1,3 @@
-"""The security properties, written down as tests.
-
-The rest of the suite runs with CSRF turned off so the tests can post forms
-directly. These turn it back on and prove it actually works -- otherwise
-Flask-WTF would be a dependency that quietly does nothing.
-
-The later tests encode the manual review: no raw SQL, no disabled template
-escaping, no key in the source, debugger off. They exist so that if someone
-adds a `text()` query or a `|safe` filter in six months, a test fails instead
-of nobody noticing.
-"""
 
 import os
 import re
@@ -30,18 +19,11 @@ SOURCE_DIRS = [
     PROJECT_ROOT / "generate_cards.py",
 ]
 
-# csrf_app and csrf_client live in conftest.py, next to the other fixtures
-# that build an app on the test database.
-
 
 def token_from(html):
-    """Pull a CSRF token out of a rendered page."""
     match = re.search(r'name="csrf_token" value="([^"]+)"', html)
     assert match, "no CSRF token found on the page"
     return match.group(1)
-
-
-# --- CSRF is really enforced ------------------------------------------------
 
 
 def test_a_form_post_without_a_token_is_rejected(csrf_client):
@@ -90,9 +72,6 @@ def test_the_json_api_with_the_header_is_accepted(csrf_client):
 
 
 def test_a_stolen_token_from_another_session_does_not_work(csrf_app, sign_in_as):
-    """Roughly what a cross-site attempt looks like: a token that was not
-    issued to this browser. Both browsers are signed in -- since Phase 2
-    every page needs that -- but as two separate sessions."""
     from app.models import AppUser
 
     admin = AppUser.query.first()
@@ -117,12 +96,7 @@ def test_the_counting_screen_hands_the_token_to_the_javascript(csrf_client):
     assert "data-csrf-token=" in entry
 
 
-# --- Every form carries a token ---------------------------------------------
-
-
 def test_every_post_form_in_every_template_has_a_csrf_token():
-    """A form added later without a token would fail at the worst moment --
-    in front of The Center Director. This catches it here instead."""
     form_tag = re.compile(r"<form\b[^>]*>", re.IGNORECASE | re.DOTALL)
     missing = []
 
@@ -131,7 +105,6 @@ def test_every_post_form_in_every_template_has_a_csrf_token():
         for match in form_tag.finditer(text):
             if 'method="post"' not in match.group(0).lower():
                 continue
-            # The token must appear before the form closes.
             rest = text[match.end():]
             body = rest[: rest.lower().find("</form>")]
             if 'name="csrf_token"' not in body:
@@ -139,9 +112,6 @@ def test_every_post_form_in_every_template_has_a_csrf_token():
                 missing.append(f"{path.relative_to(PROJECT_ROOT)}:{line}")
 
     assert not missing, "POST forms with no CSRF token: " + ", ".join(missing)
-
-
-# --- The manual review, as tests --------------------------------------------
 
 
 def python_files():
@@ -153,20 +123,12 @@ def python_files():
                 yield path
 
 
-# Reviewed uses of text(): fixed schema, never a query, never input.
 RAW_SQL_ALLOWED = {
-    # The partial index's condition: one timer per person (Phase 5).
     'postgresql_where=sa.text("status IN (\'running\', \'paused\')")',
 }
 
 
 def test_no_raw_sql_anywhere():
-    """SQLAlchemy's ORM parameterises for us. A raw text() query is where
-    injection would live, so there should not be one.
-
-    Phase 9 tightened this: it used to miss `sa.text(`, and two queries had
-    slipped through that way (the sync's lock, the backup's revision read).
-    Both were rewritten with SQLAlchemy's query builder."""
     offenders = []
     for path in python_files():
         source = path.read_text(encoding="utf-8")
@@ -183,8 +145,6 @@ def test_no_raw_sql_anywhere():
 
 
 def test_no_template_turns_off_escaping():
-    """|safe, autoescape false and Markup all disable Jinja's escaping, which
-    is what stops a stray note field turning into script."""
     offenders = []
     for path in sorted(TEMPLATES.rglob("*.html")):
         source = path.read_text(encoding="utf-8")
@@ -196,8 +156,6 @@ def test_no_template_turns_off_escaping():
 
 
 def test_user_supplied_text_is_escaped_on_the_page(client, seeded_app):
-    """The proof rather than the promise: a note with markup in it comes back
-    escaped, not as live HTML."""
     from app.extensions import db as database
     from app.models import ServiceType
     from app.services import batches
@@ -216,13 +174,10 @@ def test_user_supplied_text_is_escaped_on_the_page(client, seeded_app):
 
 
 def test_the_signing_key_is_not_written_in_the_source():
-    """A key committed to a repository is not a secret."""
     assert Config.SECRET_KEY is None
 
 
 def test_a_generated_key_is_reused_across_restarts(tmp_path):
-    """Stable, so a form The Center Director already has open keeps working after the
-    app is restarted."""
     first = resolve_secret_key(str(tmp_path))
     second = resolve_secret_key(str(tmp_path))
 
@@ -252,8 +207,6 @@ def test_the_environment_variable_wins(tmp_path, monkeypatch):
 
 
 def test_the_debugger_is_off_unless_asked_for():
-    """Flask's debugger is a remote code execution console. It must never be
-    on by default, and run.py refuses to expose it to the network."""
     source = (PROJECT_ROOT / "run.py").read_text(encoding="utf-8")
 
     assert "debug=True" not in source

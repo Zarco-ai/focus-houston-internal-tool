@@ -10,7 +10,6 @@
   for a person — the app never creates a mother from the form on its own.
 </p>
 
-{# --- The sync ----------------------------------------------------------- #}
 
 <div class="card">
   {% if not configured %}
@@ -54,7 +53,6 @@
   </div>
 {% endif %}
 
-{# --- The queue ---------------------------------------------------------- #}
 
 <h2 id="review">To review{% if queue %} ({{ queue|length }}){% endif %}</h2>
 {% for item in queue %}
@@ -103,7 +101,6 @@
   <p class="subtle">Nothing to review.</p>
 {% endfor %}
 
-{# --- Recent ------------------------------------------------------------- #}
 
 <h2>Recent responses</h2>
 <div class="table-scroll">
@@ -146,7 +143,6 @@
   </div>
 {% endif %}
 
-{# --- Merging (admins) ---------------------------------------------------- #}
 
 {% if current_user.is_admin %}
   <h2 id="merge">Two numbers, one mother</h2>

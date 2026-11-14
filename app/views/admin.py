@@ -1,8 +1,3 @@
-"""Item management, the "Needs a price" list, settings, and the audit log.
-
-The Center Director runs this herself. Adding a diaper is a form on this screen, not a
-phone call to the developer.
-"""
 
 from flask import (
     Blueprint,
@@ -44,9 +39,7 @@ from app.services import (
     snapshots,
 )
 
-# A card list of 9,000 numbers is about 250 KB. Anything far bigger isn't one.
 MAX_CARD_FILE_BYTES = 1_000_000
-# The January-September 2026 file is about 150 KB.
 MAX_HISTORY_FILE_BYTES = 5_000_000
 
 admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
@@ -54,7 +47,6 @@ admin_bp = Blueprint("admin", __name__, url_prefix="/admin")
 
 @admin_bp.route("/items")
 def items():
-    """The whole catalog, including deactivated items."""
     search = (request.args.get("q") or "").strip().lower()
     all_items = catalog.all_items()
 
@@ -146,8 +138,6 @@ def edit_item(item_id):
 
 @admin_bp.route("/items/<int:item_id>/price", methods=["POST"])
 def change_price(item_id):
-    """Set a new price. Adds a row to item_price -- old batches keep their
-    old numbers."""
     item = db.get_or_404(Item, item_id)
 
     try:
@@ -166,11 +156,6 @@ def change_price(item_id):
 
 @admin_bp.route("/needs-price")
 def needs_price():
-    """Every manual-price item and the note explaining why.
-
-    This list is the agenda for the next conversation with The Center Director. It should
-    shrink as she supplies real values.
-    """
     return render_template(
         "admin/needs_price.html",
         items=catalog.items_needing_a_price(),
@@ -179,7 +164,6 @@ def needs_price():
 
 @admin_bp.route("/settings", methods=["GET", "POST"])
 def settings():
-    """Which commit mode to use, and when an intake timer is flagged."""
     if request.method == "POST":
         if "activity_window_days" in request.form:
             try:
@@ -216,11 +200,6 @@ def settings():
 
 @admin_bp.route("/card-numbers", methods=["GET", "POST"])
 def card_numbers():
-    """Load a cards-batch-N.csv made by generate_cards.py.
-
-    An upload, because Render's free plan has no shell to run a command in.
-    All or nothing; loading the same file twice changes nothing.
-    """
     if request.method == "POST":
         upload = request.files.get("card_list")
         if upload is None or not upload.filename:
@@ -248,7 +227,6 @@ def card_numbers():
 
 
 def _day_contents(day):
-    """The batches and Google Form responses dated `day`."""
     from app.models import Batch, FormResponse
 
     found = Batch.query.filter_by(date=day).order_by(Batch.id).all()
@@ -260,10 +238,6 @@ def _day_contents(day):
 
 @admin_bp.route("/delete-day", methods=["GET", "POST"])
 def delete_day():
-    """Delete one day's test batches for good, and discard that day's Form
-    responses (their visits go with them). D9-13: the same rules as
-    `flask batches delete-date`, as a page because Render's free plan has no
-    shell. Only the date given; only if the counts still match the page."""
     import datetime
 
     from app.services import batches as batch_service
@@ -300,8 +274,6 @@ def delete_day():
 
 @admin_bp.route("/history", methods=["GET", "POST"])
 def history_import():
-    """Upload a focus-history file: earlier months from the sheets, as
-    recorded. An upload because Render's free plan has no shell."""
     from app.services import history
 
     if request.method == "POST":
@@ -327,8 +299,6 @@ def history_import():
 
 @admin_bp.route("/history/export.json")
 def history_export():
-    """Every approved session, exactly as it is now (review-queue flags
-    included), as a history file to keep or to load into another copy."""
     from app.services import history
     from app.views.reports import download
 
@@ -340,7 +310,6 @@ def history_export():
 
 @admin_bp.route("/qualities", methods=["GET", "POST"])
 def qualities():
-    """The "unique qualities" checklist on the intake survey."""
     if request.method == "POST":
         try:
             option = intake.add_quality(request.form.get("label"))
@@ -372,7 +341,6 @@ def edit_quality(quality_id):
 
 @admin_bp.route("/service-types", methods=["GET", "POST"])
 def service_type_list():
-    """Add a service type, or see them all."""
     if request.method == "POST":
         try:
             created = service_types.create(request.form.get("name"))
@@ -390,7 +358,6 @@ def service_type_list():
 
 @admin_bp.route("/service-types/<int:service_type_id>", methods=["POST"])
 def edit_service_type(service_type_id):
-    """Rename one, or switch it on or off."""
     service_type = db.get_or_404(ServiceType, service_type_id)
     try:
         if "active" in request.form:
@@ -410,11 +377,6 @@ def edit_service_type(service_type_id):
 
 @admin_bp.route("/metrics", methods=["GET", "POST"])
 def metric_settings():
-    """Switch report rows on and off, and change their wording.
-
-    One form for every metric. A box left with the default wording, or
-    emptied, keeps the default.
-    """
     if request.method == "POST":
         changed = 0
         try:
@@ -445,7 +407,6 @@ def metric_settings():
 
 @admin_bp.route("/annual", methods=["GET", "POST"])
 def annual_figures():
-    """The ANNUAL METRICS group, typed once a year. Blank means not entered."""
     year = _year_from(request.values.get("year"))
 
     if request.method == "POST":
@@ -490,8 +451,6 @@ def _year_from(raw):
 
 @admin_bp.route("/form-events", methods=["GET", "POST"])
 def form_events():
-    """Map each "What event are you here for?" answer to a service type,
-    once. Every visit from that answer, past ones included, follows."""
     if request.method == "POST":
         raw_type = request.form.get("service_type_id") or None
         try:
@@ -515,7 +474,6 @@ def form_events():
 
 @admin_bp.route("/merge", methods=["POST"])
 def merge_participants():
-    """She has two card numbers (a lost card): keep one, retire the other."""
     try:
         retiring, keeping = form_review.merge(request.form.get("retiring"),
                                               request.form.get("keeping"))
@@ -541,13 +499,8 @@ def unmerge_participant(participant_id):
     return redirect(url_for("responses.page") + "#merge")
 
 
-# --- Filing (Phase 8) ---------------------------------------------------------------------
-
-
 @admin_bp.route("/reports/file", methods=["POST"])
 def file_report():
-    """Save exactly what is being sent, frozen. Filing again later adds a
-    new snapshot; it never replaces one."""
     kind = request.form.get("kind")
     try:
         year = int(request.form.get("year", ""))
@@ -571,8 +524,6 @@ def audit_log():
 
 
 def _category_choices():
-    """Categories already in use, plus the standard ones, so a new category is
-    still possible by typing one."""
     in_use = catalog.categories_in_use()
     extra = [slug for slug in CATEGORY_ORDER if slug not in in_use]
     return in_use + extra

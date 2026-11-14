@@ -1,10 +1,3 @@
-"""Totals, report buckets, and the CSV export.
-
-The central test here is the one proving diapers and clothing/hygiene/household
-produce independent totals. Diapers are the item The Center Director hands out most, and
-FOCUS North America reports them in their own column. If a diaper count ever
-leaks into the combined goods column, every monthly report is wrong.
-"""
 
 import datetime
 from decimal import Decimal
@@ -16,7 +9,6 @@ from app.services import clock
 
 
 def add_committed_batch(lines, date=None):
-    """lines is [(item, quantity, condition), ...]"""
     batch = batches.open_batch(
         date=date or clock.local_today(),
         service_type_id=ServiceType.query.first().id,
@@ -28,8 +20,6 @@ def add_committed_batch(lines, date=None):
 
 
 def a_diaper():
-    """Diapers are not in the seed CSV -- The Center Director adds them herself. That is
-    exactly what this proves works."""
     return catalog.create_item(
         name="Diapers Size 3",
         category="diapers",
@@ -45,12 +35,7 @@ def range_today():
     return today, today
 
 
-# --- The one that matters ---------------------------------------------------
-
-
 def test_diapers_and_hygiene_produce_two_independent_totals(seeded_app):
-    """A batch containing diapers and hygiene items gives two totals that do
-    not overlap."""
     diaper = a_diaper()
     wipes = catalog.find_item("Individual Pack of Wipes", "baby_essentials")
 
@@ -65,7 +50,6 @@ def test_diapers_and_hygiene_produce_two_independent_totals(seeded_app):
     assert buckets["hygiene"]["quantity"] == 4
     assert buckets["hygiene"]["value"] == Decimal("14.00")
 
-    # Neither bucket contains any part of the other.
     assert buckets["diapers"]["quantity"] != buckets["hygiene"]["quantity"]
     assert "diapers" not in COMBINED_GOODS_BUCKETS
 
@@ -82,13 +66,11 @@ def test_diapers_do_not_roll_into_the_combined_goods_column(seeded_app):
     start, end = range_today()
     summary = totals.summary(start, end)
 
-    # Combined goods is clothing + hygiene + household only.
-    assert summary["combined_goods"]["quantity"] == 5  # 4 wipes + 1 coat
-    assert summary["combined_goods"]["value"] == Decimal("86.00")  # 4 wipes x $3.50 + $72 coat
+    assert summary["combined_goods"]["quantity"] == 5
+    assert summary["combined_goods"]["value"] == Decimal("86.00")
 
-    # The grand total does include the diapers.
     assert summary["total_quantity"] == 105
-    assert summary["total_value"] == Decimal("111.00")  # 72 + 25
+    assert summary["total_value"] == Decimal("111.00")
 
 
 def test_formula_and_food_are_also_separate_columns(seeded_app):
@@ -111,11 +93,10 @@ def test_formula_and_food_are_also_separate_columns(seeded_app):
 
     assert buckets["formula"]["quantity"] == 2
     assert buckets["food"]["quantity"] == 1
-    assert summary["combined_goods"]["quantity"] == 1  # only the wipes
+    assert summary["combined_goods"]["quantity"] == 1
 
 
 def test_every_line_lands_in_exactly_one_bucket(seeded_app):
-    """Belt and braces: the sum of the buckets equals the grand total."""
     diaper = a_diaper()
     add_committed_batch(
         [
@@ -134,9 +115,6 @@ def test_every_line_lands_in_exactly_one_bucket(seeded_app):
     assert sum(
         (b["value"] for b in summary["buckets"]), Decimal("0.00")
     ) == summary["total_value"]
-
-
-# --- Drafts and date ranges -------------------------------------------------
 
 
 def test_drafts_are_not_counted(seeded_app):
@@ -181,8 +159,6 @@ def test_month_range_covers_the_whole_month():
     assert end == datetime.date(2026, 12, 31)
 
 
-# --- Custom lines are never silently dropped --------------------------------
-
 def test_an_unsorted_custom_line_still_shows_up_in_the_totals(seeded_app):
     batch = batches.open_batch(service_type_id=ServiceType.query.first().id)
     batches.add_custom_line(batch, name="Mystery Box", quantity=2, unit_price=10)
@@ -195,16 +171,10 @@ def test_an_unsorted_custom_line_still_shows_up_in_the_totals(seeded_app):
     assert totals.UNSORTED_LABEL in labels
     assert summary["total_quantity"] == 2
     assert summary["total_value"] == Decimal("20.00")
-    # It must not be counted as clothing/hygiene/household.
     assert summary["combined_goods"]["quantity"] == 0
 
 
-# --- CSV export -------------------------------------------------------------
-
-
 def test_the_export_always_shows_the_category(seeded_app):
-    """Without it there is no way to tell a $72 adult coat from an $18 infant
-    one."""
     add_committed_batch(
         [
             (catalog.find_item("Coat", "clothing_adult"), 1, "new"),
@@ -250,8 +220,7 @@ def test_the_export_has_one_row_per_line_plus_a_header(seeded_app):
     assert rows[0].startswith("batch_date,batch_id,service_type,item_name,category")
 
 
-def test_bucket_quantities_sum_to_total(seeded_app): #Handwritten, understood, needs mroe practice
-    # commit a batch with items from several buckets, a test to see if the summaries total quantities == the total quantities of all buckets
+def test_bucket_quantities_sum_to_total(seeded_app):
     add_committed_batch(
         [
             (catalog.find_item("Coat", "clothing_adult"), 1, "new"),

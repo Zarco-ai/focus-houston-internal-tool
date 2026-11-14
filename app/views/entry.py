@@ -1,13 +1,3 @@
-"""The core screen: counting items into a batch.
-
-This is the screen The Center Director uses standing up, possibly holding a baby.
-Everything else in the app is secondary to it.
-
-The page is rendered server-side with every item and its current quantity.
-The +/- buttons, the keypad and the New/Used toggle then talk to
-update_line() below, which returns the new line value and the new batch total
-as JSON so the footer can update without a page reload.
-"""
 
 from flask import (
     Blueprint,
@@ -39,8 +29,6 @@ def entry_screen(batch_id):
     batch = db.get_or_404(Batch, batch_id)
 
     if batch.is_committed and not _auto_mode_today(batch):
-        # Approved batches are read-only. Corrections happen on the batch page
-        # so they go through the audit log.
         return redirect(url_for("batches.view_batch", batch_id=batch.id))
 
     items = catalog.active_items()
@@ -61,10 +49,6 @@ def entry_screen(batch_id):
 
 @entry_bp.route("/api/batch/<int:batch_id>/line", methods=["POST"])
 def update_line(batch_id):
-    """Set the quantity, condition or price of one item. Returns JSON.
-
-    Every +, -, keypad OK, toggle flip and price keystroke lands here.
-    """
     batch = db.get_or_404(Batch, batch_id)
     payload = request.get_json(silent=True) or {}
 
@@ -102,11 +86,6 @@ def update_line(batch_id):
 
 @entry_bp.route("/api/batch/<int:batch_id>/line/<int:line_id>", methods=["POST"])
 def update_line_by_id(batch_id, line_id):
-    """Set the quantity or price of one specific line.
-
-    Used by the extra price groups on a manual-price row, where "the Stroller
-    line" is ambiguous -- there may be one at $40 and another at $300.
-    """
     batch = db.get_or_404(Batch, batch_id)
     line = LineItem.query.filter_by(id=line_id, batch_id=batch.id).first_or_404()
 
@@ -136,7 +115,6 @@ def update_line_by_id(batch_id, line_id):
 
 @entry_bp.route("/batch/<int:batch_id>/price-group", methods=["POST"])
 def add_price_group(batch_id):
-    """Record the same item again at a different value."""
     batch = db.get_or_404(Batch, batch_id)
 
     item = db.session.get(Item, _as_int(request.form.get("item_id")))
@@ -175,10 +153,6 @@ def remove_price_group(batch_id, line_id):
     return redirect(url_for("entry.entry_screen", batch_id=batch.id) + anchor)
 
 
-# Where the service type dropdown sends her back to. Both screens carry one,
-# and each has to stay put: picking a type on the review screen halfway through
-# approving must not throw her back to the counting screen. Looked up by key so
-# a hand-typed return_to can never turn into a redirect to somewhere else.
 _RETURN_TO = {
     "entry": "entry.entry_screen",
     "review": "review.review_screen",
@@ -187,22 +161,12 @@ _RETURN_TO = {
 
 @entry_bp.route("/batch/<int:batch_id>/service-type", methods=["POST"])
 def set_service_type(batch_id):
-    """Pick the kind of session. Optional while counting, required to approve.
-
-    Shared by the counting screen and the review screen. Both post a form; the
-    JSON branch is for a caller that wants the updated batch back instead of a
-    page.
-    """
     batch = db.get_or_404(Batch, batch_id)
 
     if request.is_json:
         payload = request.get_json(silent=True) or {}
         raw = payload.get("service_type_id")
     else:
-        # Not `or request.json` -- an empty string is the "Service type…" /
-        # "Not set" option, a real answer meaning "take it off", and reading
-        # request.json on a form post is what used to answer with 415
-        # Unsupported Media Type instead of a page.
         raw = request.form.get("service_type_id")
 
     service_type_id = _as_int(raw)
@@ -239,18 +203,12 @@ def _service_type_error(batch, message):
 
 
 def _back_to_screen(batch):
-    """Back to whichever screen the dropdown was on."""
     endpoint = _RETURN_TO.get(request.form.get("return_to"), _RETURN_TO["entry"])
     return redirect(url_for(endpoint, batch_id=batch.id))
 
 
 @entry_bp.route("/batch/<int:batch_id>/custom-item", methods=["POST"])
 def add_custom_item(batch_id):
-    """Add something that is not in the catalog.
-
-    Separate from the keypad: the keypad sets a quantity for an item that
-    already exists, this creates a line for one that does not.
-    """
     batch = db.get_or_404(Batch, batch_id)
 
     try:
@@ -272,12 +230,7 @@ def add_custom_item(batch_id):
     return redirect(url_for("entry.entry_screen", batch_id=batch.id))
 
 
-# --- Helpers ---------------------------------------------------------------
-
-
 def _auto_mode_today(batch):
-    """In auto mode today's batch stays open for more counting even though it
-    has already been saved."""
     return (
         get_commit_mode() == COMMIT_MODE_AUTO
         and batch.date == clock.local_today()
@@ -285,13 +238,6 @@ def _auto_mode_today(batch):
 
 
 def _rows_for(batch, items):
-    """One view-model per catalog item, carrying whatever this batch already
-    has for it -- in BOTH conditions.
-
-    An item can be counted new and used in the same batch, so each row holds a
-    quantity, a price and a value for each condition. The row shows one at a
-    time and the New/Used toggle switches between them.
-    """
     rows = {}
     for item in items:
         catalog_price = item.current_price()
@@ -303,12 +249,8 @@ def _rows_for(batch, items):
 
             by_condition[condition] = {
                 "quantity": line.quantity if line else 0,
-                # A manual item with a price on file is pre-filled and
-                # editable. One with no price starts empty.
                 "unit_price": line.unit_price_at_time if line else catalog_price,
                 "value": line.computed_value if line else None,
-                # Everything after the first line: the same item recorded again
-                # at a different value. Only manual-price items get these.
                 "extras": [
                     {
                         "id": extra.id,
@@ -320,8 +262,6 @@ def _rows_for(batch, items):
                 ],
             }
 
-        # Which condition the row shows on arrival: whichever one she has
-        # actually counted, preferring New when both or neither are counted.
         shown = CONDITION_NEW
         if (
             by_condition[CONDITION_NEW]["quantity"] == 0
@@ -335,8 +275,6 @@ def _rows_for(batch, items):
             "shown": shown,
             "catalog_price": catalog_price,
             "manual": item.needs_manual_price,
-            # A manual item with a price on file needs confirming rather than
-            # typing from scratch. The row says which.
             "prefilled": item.needs_manual_price and catalog_price is not None,
         }
     return rows
@@ -350,8 +288,6 @@ def _line_json(line):
         "condition": line.condition,
         "unit_price": _decimal_str(line.unit_price_at_time),
         "value": _decimal_str(line.computed_value),
-        # The model's rule, not a copy of it -- a price of zero counts as no
-        # price, here as everywhere else.
         "needs_price": line.needs_price,
     }
 
@@ -363,15 +299,12 @@ def _batch_json(batch):
         "total_value": _decimal_str(batch.total_value),
         "ready": not reasons,
         "reasons": reasons,
-        # Loose ends that do NOT stop the batch, such as a line with no price.
         "warnings": batch_service.approval_warnings(batch),
         "status": batch.status,
     }
 
 
 def _decimal_str(value):
-    """Decimals do not survive JSON. Send them as strings so no rounding
-    happens on the way to the browser."""
     return None if value is None else f"{value:.2f}"
 
 

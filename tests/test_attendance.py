@@ -1,9 +1,3 @@
-"""Attendance on the review screen (Phase 4).
-
-Three rules: what is typed is checked and never quietly changed; a session
-with counts but no goods can be approved; and on an approved batch every
-change is in the audit log.
-"""
 
 from decimal import Decimal
 
@@ -21,9 +15,6 @@ def a_batch():
 
 def field(name):
     return FIELDS_BY_NAME[name]
-
-
-# --- What a box accepts --------------------------------------------------------------
 
 
 @pytest.mark.parametrize("name, typed, stored", [
@@ -57,9 +48,6 @@ def test_a_wrong_box_is_refused_not_rounded(name, typed):
         attendance.parse_value(field(name), typed)
 
 
-# --- Attendance-only batches ---------------------------------------------------------
-
-
 def test_a_class_with_counts_and_no_goods_can_be_approved(seeded_app):
     batch = a_batch()
     batches.set_attendance(batch, {"education_participants_total": 12,
@@ -83,9 +71,6 @@ def test_a_money_figure_alone_is_enough_to_approve(seeded_app):
     batch = a_batch()
     batches.set_attendance(batch, {"meals_value": Decimal("30.00")})
     assert batches.can_commit(batch)
-
-
-# --- Saving, and the audit log --------------------------------------------------------
 
 
 def test_a_draft_saves_without_audit_rows(seeded_app):
@@ -124,15 +109,12 @@ def test_an_unknown_field_is_refused(seeded_app):
         batches.set_attendance(a_batch(), {"mother_name": "x"})
 
 
-# --- The review screen -------------------------------------------------------------------
-
-
 def review_page(client, batch):
     return client.get(f"/batch/{batch.id}/review").get_data(as_text=True)
 
 
 def test_the_review_screen_offers_every_switched_on_box(client, seeded_app):
-    for setting in metrics.settings():   # some start off (meals, medical...)
+    for setting in metrics.settings():
         metrics.update_setting(setting.key, enabled=True)
     batch = a_batch()
     db.session.commit()
@@ -151,7 +133,6 @@ def test_a_switched_off_metric_hides_its_box_and_keeps_its_value(client, seeded_
 
     assert 'name="meals_value"' not in review_page(client, batch)
 
-    # Saving the form without the hidden box keeps what was typed before.
     client.post(f"/batch/{batch.id}/attendance", data={"children_served": "3"})
     db.session.refresh(batch.attendance)
     assert batch.attendance.meals_value == Decimal("25.00")
@@ -159,7 +140,7 @@ def test_a_switched_off_metric_hides_its_box_and_keeps_its_value(client, seeded_
 
 
 def test_the_review_screen_saves_every_kind_of_box(client, seeded_app):
-    for setting in metrics.settings():   # some start off (meals, medical...)
+    for setting in metrics.settings():
         metrics.update_setting(setting.key, enabled=True)
     batch = a_batch()
     db.session.commit()
@@ -224,4 +205,4 @@ def test_the_batch_page_shows_the_counts_and_their_history(client, seeded_app):
 
     page = client.get(f"/batches/{batch.id}").get_data(as_text=True)
     assert "Children served" in page
-    assert "children_served" in page  # the history row's field
+    assert "children_served" in page

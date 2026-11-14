@@ -1,15 +1,3 @@
-"""Adding up committed batches for a date range.
-
-The one rule that matters here: every line lands in exactly one report bucket.
-Diapers are counted and valued in their own column and never roll into
-clothing/hygiene/household. Formula and food are separate too. If you change
-anything in this file, run tests/test_totals.py -- it exists specifically to
-prove those columns do not overlap.
-
-The report rows themselves -- Non-Food GIK, the attendance figures, the
-FOCUS North America groups -- are app/services/metrics.py, built on
-bucket_totals() here.
-"""
 
 import csv
 import datetime
@@ -24,14 +12,11 @@ from app.constants import (
 from app.models import Batch, LineItem
 from app.services.valuation import ZERO
 
-# Where a custom line that nobody has sorted yet gets counted. It is shown
-# separately rather than dropped, so the totals never quietly lose value.
 UNSORTED = "unsorted"
 UNSORTED_LABEL = "Not yet sorted"
 
 
 def committed_batches(start_date, end_date):
-    """Committed batches in the range, oldest first."""
     return (
         Batch.query.filter(
             Batch.status == STATUS_COMMITTED,
@@ -44,7 +29,6 @@ def committed_batches(start_date, end_date):
 
 
 def committed_lines(start_date, end_date):
-    """Every line in every committed batch in the range."""
     return (
         LineItem.query.join(Batch, LineItem.batch_id == Batch.id)
         .filter(
@@ -59,16 +43,10 @@ def committed_lines(start_date, end_date):
 
 
 def bucket_key(line):
-    """The single bucket this line counts towards."""
     return line.report_bucket or UNSORTED
 
 
 def bucket_totals(start_date, end_date):
-    """{bucket: {"label", "quantity", "value"}} for every bucket with activity.
-
-    Each line is added to exactly one bucket. There is no double counting
-    because there is no second loop -- this is deliberate, keep it that way.
-    """
     totals = {}
 
     for line in committed_lines(start_date, end_date):
@@ -90,7 +68,6 @@ def bucket_totals(start_date, end_date):
 
 
 def summary(start_date, end_date):
-    """Everything the totals page needs, in one call."""
     lines = committed_lines(start_date, end_date)
     buckets = bucket_totals(start_date, end_date)
 
@@ -100,15 +77,11 @@ def summary(start_date, end_date):
         if line.computed_value is not None:
             total_value += line.computed_value
 
-    # Buckets in a fixed order so the page does not reshuffle between loads,
-    # with anything unexpected (including unsorted custom lines) at the end.
     ordered = [buckets[key] for key in REPORT_BUCKETS if key in buckets]
     ordered += [
         buckets[key] for key in sorted(buckets) if key not in REPORT_BUCKETS
     ]
 
-    # The combined column FOCUS North America asks for. Built by naming the
-    # three buckets explicitly, so adding a diapers line can never leak in.
     combined_quantity = sum(
         buckets[key]["quantity"] for key in COMBINED_GOODS_BUCKETS if key in buckets
     )
@@ -133,7 +106,6 @@ def summary(start_date, end_date):
 
 
 def month_range(year, month):
-    """First and last day of a month."""
     start = datetime.date(year, month, 1)
     if month == 12:
         end = datetime.date(year, 12, 31)
@@ -143,9 +115,6 @@ def month_range(year, month):
 
 
 def export_csv(start_date, end_date):
-    """One row per line item. Category is always included -- without it there
-    is no way to tell a $60 adult coat from a $15 infant one. Typed text is
-    made safe to open in a spreadsheet (exports.safe)."""
     from app.services.exports import safe
 
     output = io.StringIO()

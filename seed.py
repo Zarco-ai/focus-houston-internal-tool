@@ -1,20 +1,9 @@
 #!/usr/bin/env python3
-"""Load the item catalog into the database.
-
-    python seed.py            add anything missing, leave existing items alone
-    python seed.py --reset    wipe the database first and start clean
-
-The database schema must already exist -- `flask --app run db upgrade`
-creates it. --reset deletes every batch you have entered, rebuilds the schema
-from the migrations, and then loads the catalog. It exists for development,
-and refuses to run against a production configuration.
-"""
 
 import argparse
 import os
 import sys
 
-# A laptop tool: the development configuration unless you have said otherwise.
 os.environ.setdefault("FOCUS_ENV", "development")
 
 import flask_migrate  # noqa: E402
@@ -26,8 +15,6 @@ from app.services.seeding import SeedError, seed_all  # noqa: E402
 
 
 def rebuild_schema():
-    """Drop every table -- including Alembic's record of which migrations ran
-    -- and run all the migrations again from the start."""
     db.drop_all()
     Table("alembic_version", MetaData()).drop(db.engine, checkfirst=True)
     flask_migrate.upgrade()

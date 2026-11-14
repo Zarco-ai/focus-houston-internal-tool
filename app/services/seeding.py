@@ -1,18 +1,3 @@
-"""Loading the catalog from the seed CSV.
-
-The CSV is the catalog a new database starts with. Since Phase 3 it is
-written by `flask catalog export-csv` after the Valuations import, so a git
-diff of it shows every catalog change. Its columns are:
-
-    item_name, category, report_bucket, unit_price_new, used_multiplier,
-    price_entry, notes, and optionally display_group
-
-A blank unit_price_new is expected and normal -- several items in the source
-sheet have no price at all, or a range instead of a price. Those come in as
-price_entry=manual with no price, and The Center Director types a value at entry time.
-
-seed.py at the project root is the command-line wrapper around this.
-"""
 
 import csv
 import os
@@ -27,7 +12,6 @@ from app.extensions import db
 from app.models import Item, ServiceType
 from app.services import clock
 
-# The kinds of session a batch can belong to.
 SERVICE_TYPES = [
     "Diaper Distribution",
     "Early Distribution",
@@ -52,11 +36,10 @@ REQUIRED_COLUMNS = {
 
 
 class SeedError(Exception):
-    """The CSV could not be read. The message says which row and why."""
+    pass
 
 
 def _clean(value):
-    """Trim whitespace and turn an empty cell into None."""
     if value is None:
         return None
     value = value.strip()
@@ -64,7 +47,6 @@ def _clean(value):
 
 
 def _parse_price(value, row_number):
-    """A price cell. Blank is allowed and means 'we do not know'."""
     value = _clean(value)
     if value is None:
         return None
@@ -76,7 +58,6 @@ def _parse_price(value, row_number):
 
 
 def _parse_multiplier(value, row_number):
-    """The used rate. Required -- an item with no rate cannot be valued used."""
     value = _clean(value)
     if value is None:
         raise SeedError(f"Row {row_number}: used_multiplier is required.")
@@ -92,13 +73,7 @@ def _parse_multiplier(value, row_number):
 
 
 def read_catalog_csv(csv_path):
-    """Read the CSV into a list of plain dicts. No database involved.
-
-    Kept separate from the loading so a bad file fails before anything is
-    written.
-    """
     rows = []
-    # utf-8-sig strips the byte order mark Excel likes to add.
     with open(csv_path, newline="", encoding="utf-8-sig") as handle:
         reader = csv.DictReader(handle)
 
@@ -108,11 +83,10 @@ def read_catalog_csv(csv_path):
                 f"{csv_path} is missing columns: {', '.join(sorted(missing))}"
             )
 
-        # Row 1 is the header, so data starts at row 2.
         for row_number, row in enumerate(reader, start=2):
             name = _clean(row["item_name"])
             if name is None:
-                continue  # blank line at the end of the file
+                continue
 
             category = _clean(row["category"])
             if category is None:
@@ -159,7 +133,6 @@ def read_catalog_csv(csv_path):
 
 
 def seed_service_types():
-    """Add any service type that is not already there. Never removes one."""
     added = 0
     for name in SERVICE_TYPES:
         existing = ServiceType.query.filter_by(name=name).one_or_none()
@@ -171,14 +144,6 @@ def seed_service_types():
 
 
 def seed_catalog(csv_path, effective_from=None):
-    """Load the catalog. Items are matched on (name, category).
-
-    An item that already exists is left alone -- if The Center Director has corrected a
-    price in the app, reseeding must not undo her work. Use seed.py --reset
-    if you want a clean slate.
-
-    Returns a summary dict so the caller (and the tests) can report on it.
-    """
     effective_from = effective_from or clock.local_today()
     rows = read_catalog_csv(csv_path)
 
@@ -211,9 +176,6 @@ def seed_catalog(csv_path, effective_from=None):
         )
         db.session.add(item)
 
-        # Every item gets a price row, even when the price is unknown. A row
-        # with a NULL price records "as of this date we have no price", which
-        # is different from having no history at all.
         item.set_price(row["unit_price_new"], effective_from=effective_from)
         summary["prices_added"] += 1
         if row["unit_price_new"] is None:
@@ -226,12 +188,6 @@ def seed_catalog(csv_path, effective_from=None):
 
 
 def seed_all(csv_path):
-    """Service types, then the catalog. Safe to run any number of times.
-
-    Wiping the database first is seed.py --reset's job, not this module's:
-    it rebuilds the schema through the migrations, which is Flask tooling, and
-    nothing in app/services imports Flask.
-    """
     service_types_added = seed_service_types()
     summary = seed_catalog(csv_path)
     summary["service_types_added"] = service_types_added
@@ -241,15 +197,6 @@ def seed_all(csv_path):
 
 
 def load_if_empty(csv_path):
-    """Load service types and the catalog into a database that has no items
-    yet, and do nothing at all otherwise. Returns the summary, or None if the
-    catalog was already there.
-
-    This is what a new database (staging, production) runs on startup. It
-    must never touch a catalog that exists: once the program director has edited prices,
-    renamed or retired items in the app, the app is where the catalog lives,
-    and "add anything missing" would bring back every name she changed.
-    """
     if Item.query.first() is not None:
         return None
     return seed_all(csv_path)
@@ -262,9 +209,6 @@ EXPORT_COLUMNS = [
 
 
 def write_catalog_csv(csv_path, items):
-    """Write active items to the catalog CSV, in the order the entry screen
-    shows them. Replaces the file in one step (write a temporary file, then
-    rename), so a crash halfway can't leave half a catalog behind."""
     from app.services import catalog
 
     items = [item for item in catalog._sorted(items) if item.active]
